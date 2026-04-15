@@ -3,6 +3,8 @@ import * as vscode from "vscode";
 import { ManifestStore } from "./manifestStore";
 import { execFileAsync, formatError, pathExists } from "./runtimeUtils";
 
+const DBT_PROJECT_FILE_NAME = "dbt_project.yml";
+
 export class CompiledModelService {
   public constructor(private readonly store: ManifestStore) {}
 
@@ -25,6 +27,10 @@ export class CompiledModelService {
     }
 
     const workspaceRoot = workspaceFolder.uri.fsPath;
+    if (!(await this.hasDbtProjectFile(workspaceRoot))) {
+      return;
+    }
+
     if (!(await this.isDbtInstalled(workspaceRoot))) {
       return;
     }
@@ -92,6 +98,18 @@ export class CompiledModelService {
       );
       return false;
     }
+  }
+
+  private async hasDbtProjectFile(workspaceRoot: string): Promise<boolean> {
+    const projectFilePath = path.join(workspaceRoot, DBT_PROJECT_FILE_NAME);
+    if (await pathExists(projectFilePath)) {
+      return true;
+    }
+
+    void vscode.window.showWarningMessage(
+      `Light dbt requires ${DBT_PROJECT_FILE_NAME} in the workspace root before it can compile models.`
+    );
+    return false;
   }
 
 }
