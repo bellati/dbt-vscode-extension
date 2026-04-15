@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { CompiledModelService } from "./compiledModelService";
 import { LineageTreeProvider } from "./lineageTree";
 import { ManifestStore, type RefTarget } from "./manifestStore";
 
@@ -75,6 +76,7 @@ function isCompletionContext(prefix: string): boolean {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const store = new ManifestStore(context);
+  const compiledModelService = new CompiledModelService(store);
   const lineageTreeProvider = new LineageTreeProvider(store);
   context.subscriptions.push(store);
   context.subscriptions.push(lineageTreeProvider);
@@ -88,6 +90,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   const showLineageCommand = vscode.commands.registerCommand("dbtAutoComplete.showLineage", async () => {
     await lineageTreeProvider.revealActiveEditor(true);
+  });
+  const showCompiledModelCommand = vscode.commands.registerCommand("dbtAutoComplete.showCompiledModel", async () => {
+    const activeEditor = vscode.window.activeTextEditor;
+    if (!activeEditor) {
+      void vscode.window.showWarningMessage("Open a dbt model file to view its compiled SQL.");
+      return;
+    }
+
+    await compiledModelService.openCompiledModelForFile(activeEditor.document.uri.fsPath);
   });
 
   const provider = vscode.languages.registerCompletionItemProvider(
@@ -178,6 +189,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshCommand,
     refreshLineageCommand,
     showLineageCommand,
+    showCompiledModelCommand,
     provider,
     triggerSuggestOnDelete,
     activeEditorListener,

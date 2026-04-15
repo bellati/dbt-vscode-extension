@@ -31,6 +31,12 @@ export type RefTarget = {
   packageName?: string;
 };
 
+export type SourceTarget = {
+  sourceName: string;
+  name: string;
+  packageName?: string;
+};
+
 export type LineageDirection = "upstream" | "downstream";
 
 export type LineageNode = {
@@ -40,6 +46,7 @@ export type LineageNode = {
   resourceType: "model" | "seed" | "snapshot" | "source";
   sourceName?: string;
   filePath?: string;
+  originalFilePath?: string;
   isLocal: boolean;
 };
 
@@ -48,6 +55,7 @@ type CompletionState = {
   refTargets: RefTarget[];
   refPackages: string[];
   refsByPackage: Map<string, string[]>;
+  sourceTargets: SourceTarget[];
   sourcesByName: Map<string, string[]>;
 };
 
@@ -99,6 +107,7 @@ export class ManifestStore implements vscode.Disposable {
     refTargets: [],
     refPackages: [],
     refsByPackage: new Map(),
+    sourceTargets: [],
     sourcesByName: new Map()
   };
   private lineageState: LineageState = {
@@ -136,6 +145,10 @@ export class ManifestStore implements vscode.Disposable {
 
   public get sourceNames(): string[] {
     return dedupeAndSort(this.completionState.sourcesByName.keys());
+  }
+
+  public get sourceTargets(): SourceTarget[] {
+    return this.completionState.sourceTargets;
   }
 
   public get refTargets(): RefTarget[] {
@@ -335,14 +348,33 @@ export class ManifestStore implements vscode.Disposable {
       );
 
       const sourcesByName = new Map<string, string[]>();
-      for (const source of Object.values(parsed.sources ?? {})) {
-        if (!source.source_name || !source.name) {
-          continue;
-        }
+      const sourceTargets = Object.values(parsed.sources ?? {})
+        .filter((source): source is DbtManifestSource & { source_name: string; name: string } =>
+          Boolean(source.source_name && source.name)
+        )
+        .map((source) => ({
+          sourceName: source.source_name,
+          name: source.name,
+          packageName: source.package_name
+        }))
+        .sort((left, right) => {
+          const nameOrder = left.name.localeCompare(right.name);
+          if (nameOrder !== 0) {
+            return nameOrder;
+          }
 
-        const tables = sourcesByName.get(source.source_name) ?? [];
+          const sourceOrder = left.sourceName.localeCompare(right.sourceName);
+          if (sourceOrder !== 0) {
+            return sourceOrder;
+          }
+
+          return (left.packageName ?? "").localeCompare(right.packageName ?? "");
+        });
+
+      for (const source of sourceTargets) {
+        const tables = sourcesByName.get(source.sourceName) ?? [];
         tables.push(source.name);
-        sourcesByName.set(source.source_name, dedupeAndSort(tables));
+        sourcesByName.set(source.sourceName, dedupeAndSort(tables));
       }
 
       this.completionState = {
@@ -350,6 +382,7 @@ export class ManifestStore implements vscode.Disposable {
         refTargets,
         refPackages: dedupeAndSort(refPackages),
         refsByPackage,
+        sourceTargets,
         sourcesByName
       };
       this.lineageState = await this.buildLineageState(parsed, workspaceRoot);
@@ -382,6 +415,7 @@ export class ManifestStore implements vscode.Disposable {
         packageName: node.package_name,
         resourceType,
         filePath: resolvedFilePath,
+        originalFilePath: node.original_file_path ?? node.path,
         isLocal: Boolean(resolvedFilePath)
       };
       nodesByUniqueId.set(uniqueId, lineageNode);
@@ -446,6 +480,7 @@ export class ManifestStore implements vscode.Disposable {
       refTargets: [],
       refPackages: [],
       refsByPackage: new Map(),
+      sourceTargets: [],
       sourcesByName: new Map()
     };
     this.lineageState = {

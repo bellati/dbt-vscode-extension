@@ -30,6 +30,10 @@
       {
         "command": "dbtAutoComplete.refreshLineage",
         "title": "dbt Auto Complete: Refresh Lineage"
+      },
+      {
+        "command": "dbtAutoComplete.showCompiledModel",
+        "title": "dbt Auto Complete: Show Compiled Model"
       }
     ],
     "viewsContainers": {
