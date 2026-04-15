@@ -1,7 +1,14 @@
 import * as vscode from "vscode";
 import { CompiledModelService } from "./compiledModelService";
 import { LineageTreeProvider } from "./lineageTree";
-import { ManifestStore, type HoverTarget, type MacroHoverTarget, type RefTarget, type SourceTarget } from "./manifestStore";
+import {
+  ManifestStore,
+  type HoverTarget,
+  type MacroHoverTarget,
+  type ManifestPickerItem,
+  type RefTarget,
+  type SourceTarget
+} from "./manifestStore";
 import { createMacroTooltip, createResourceTooltip } from "./tooltip";
 
 type CompletionInsertText = string | vscode.SnippetString;
@@ -167,6 +174,15 @@ function containsPosition(range: vscode.Range, position: vscode.Position): boole
 
 function createDefinitionLocations(filePaths: string[]): vscode.Location[] {
   return filePaths.map((filePath) => new vscode.Location(vscode.Uri.file(filePath), new vscode.Position(0, 0)));
+}
+
+function createManifestQuickPickItem(item: ManifestPickerItem): vscode.QuickPickItem & { filePath: string } {
+  return {
+    label: item.label,
+    description: item.description,
+    detail: item.detail,
+    filePath: item.filePath
+  };
 }
 
 function createHoverForTargets(kind: "ref" | "source", targets: HoverTarget[]): vscode.Hover | undefined {
@@ -413,6 +429,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await compiledModelService.openCompiledModelForFile(activeEditor.document.uri.fsPath, true);
     }
   );
+  const showManifestPickerCommand = vscode.commands.registerCommand("dbtAutoComplete.showManifestPicker", async () => {
+    const items = store.getManifestPickerItems();
+    if (items.length === 0) {
+      void vscode.window.showWarningMessage("Light dbt manifest entries are unavailable. Refresh the manifest and try again.");
+      return;
+    }
+
+    const selection = await vscode.window.showQuickPick(items.map(createManifestQuickPickItem), {
+      title: "Light dbt: Picker",
+      placeHolder: "Search models, sources, seeds, snapshots, and macros",
+      matchOnDescription: true,
+      matchOnDetail: true
+    });
+
+    if (!selection) {
+      return;
+    }
+
+    const document = await vscode.workspace.openTextDocument(selection.filePath);
+    await vscode.window.showTextDocument(document, { preview: false });
+  });
 
   const provider = vscode.languages.registerCompletionItemProvider(
     [
@@ -518,6 +555,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showLineageCommand,
     showCompiledModelCommand,
     recompileAndShowModelCommand,
+    showManifestPickerCommand,
     provider,
     definitionProvider,
     hoverProvider,

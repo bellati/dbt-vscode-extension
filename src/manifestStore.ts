@@ -92,6 +92,13 @@ export type MacroHoverTarget = {
   macro: MacroNode;
 };
 
+export type ManifestPickerItem = {
+  label: string;
+  description: string;
+  detail: string;
+  filePath: string;
+};
+
 type CompletionState = {
   refs: string[];
   refTargets: RefTarget[];
@@ -204,6 +211,7 @@ export class ManifestStore implements vscode.Disposable {
     parentMap: new Map(),
     childMap: new Map()
   };
+  private pickerItems: ManifestPickerItem[] = [];
   private manifestPath?: string;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
@@ -318,6 +326,10 @@ export class ManifestStore implements vscode.Disposable {
     }
 
     return node;
+  }
+
+  public getManifestPickerItems(): ManifestPickerItem[] {
+    return this.pickerItems;
   }
 
   public async initialize(): Promise<void> {
@@ -511,6 +523,7 @@ export class ManifestStore implements vscode.Disposable {
       this.definitionState = await this.buildDefinitionState(parsed, workspaceRoot);
       this.lineageState = await this.buildLineageState(parsed, workspaceRoot);
       this.hoverState = await this.buildHoverState(parsed, workspaceRoot);
+      this.pickerItems = this.buildPickerItems();
       this.setStatus(`dbt: ${refs.length} refs, ${parsed.sources ? Object.keys(parsed.sources).length : 0} sources`);
       this.onDidChangeEmitter.fire();
     } catch (error) {
@@ -736,6 +749,7 @@ export class ManifestStore implements vscode.Disposable {
       parentMap: new Map(),
       childMap: new Map()
     };
+    this.pickerItems = [];
     this.onDidChangeEmitter.fire();
   }
 
@@ -793,5 +807,39 @@ export class ManifestStore implements vscode.Disposable {
       children,
       macros
     };
+  }
+
+  private buildPickerItems(): ManifestPickerItem[] {
+    const lineageItems = [...this.lineageState.nodesByUniqueId.values()]
+      .filter((node) => Boolean(node.filePath))
+      .map((node) => ({
+        label: node.displayName,
+        description: node.resourceType,
+        detail: [node.packageName, node.fullyQualifiedName, node.originalFilePath].filter(Boolean).join(" • "),
+        filePath: node.filePath as string
+      }));
+
+    const macroItems = [...this.hoverState.macrosByUniqueId.values()]
+      .filter((macro) => Boolean(macro.filePath))
+      .map((macro) => ({
+        label: macro.name,
+        description: "macro",
+        detail: [macro.packageName, macro.fullyQualifiedName, macro.originalFilePath].filter(Boolean).join(" • "),
+        filePath: macro.filePath as string
+      }));
+
+    return [...lineageItems, ...macroItems].sort((left, right) => {
+      const labelOrder = left.label.localeCompare(right.label);
+      if (labelOrder !== 0) {
+        return labelOrder;
+      }
+
+      const descriptionOrder = left.description.localeCompare(right.description);
+      if (descriptionOrder !== 0) {
+        return descriptionOrder;
+      }
+
+      return left.detail.localeCompare(right.detail);
+    });
   }
 }

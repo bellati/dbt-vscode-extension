@@ -38,6 +38,10 @@
       {
         "command": "dbtAutoComplete.recompileAndShowModel",
         "title": "Light dbt: Recompile and Show Model"
+      },
+      {
+        "command": "dbtAutoComplete.showManifestPicker",
+        "title": "Light dbt: Picker"
       }
     ],
     "viewsContainers": {

@@ -8,6 +8,7 @@ VS Code extension that:
 - provides autocomplete for `ref()` and `source()`
 - provides go-to definition for local `ref()` targets and local macros from the dbt manifest
 - provides manifest-backed hover details for `ref()`, `source()`, and lineage tree nodes
+- provides a manifest-backed picker that searches models, sources, seeds, snapshots, and macros and opens the selected file
 - provides a lineage tree view for the active dbt model
 - opens the compiled SQL for the active dbt model on demand
 - can force a recompilation of the active model before opening the compiled SQL
@@ -29,6 +30,7 @@ Main commands exposed in VS Code:
 - `Light dbt: Show Lineage`: reveal the lineage view for the current active dbt model without forcing a manifest refresh first.
 - `Light dbt: Show Compiled Model`: open the compiled SQL for the active model, compiling first only when the compiled artifact is missing.
 - `Light dbt: Recompile and Show Model`: always run `dbt compile` for the active model and then open the freshly generated compiled SQL.
+- `Light dbt: Picker`: open a quick-pick search across local manifest entities and macros, with type hints and path context, then open the selected file.
 
 ## Lineage View
 
@@ -131,8 +133,16 @@ You can also run the command palette action:
 - `Light dbt: Show Lineage`
 - `Light dbt: Show Compiled Model`
 - `Light dbt: Recompile and Show Model`
+- `Light dbt: Picker`
 
 These commands force the extension to check `dbt` again, reload the manifest, and reveal the lineage tree for the active model.
+
+The picker command is also manifest-backed:
+
+- it searches local models, sources, seeds, snapshots, and macros from the current manifest
+- each result shows a type hint such as `model`, `source`, or `macro`
+- the detail line includes package, fully qualified name, and original manifest path when available
+- selecting a result opens the local file directly
 
 Go-to definition is also manifest-backed:
 
@@ -257,6 +267,19 @@ Expected result:
 - local `ref()` targets open the corresponding model, seed, or snapshot file
 - local macros open the corresponding macro file
 - unresolved or external-only targets do not open anything
+
+### 8. Verify picker search
+
+Run:
+
+- `Light dbt: Picker`
+
+Expected result:
+
+- VS Code opens a quick-pick that searches across manifest-backed models, sources, seeds, snapshots, and macros
+- items show a type hint in the description field
+- items show package and path context in the detail field when available
+- selecting an item opens the matching local file
 
 ### 8. Verify the lineage tree
 
