@@ -1,0 +1,48 @@
+{
+  "name": "dbt-auto-complete",
+  "displayName": "dbt Auto Complete",
+  "description": "VS Code autocomplete for dbt refs and sources backed by the dbt manifest artifact.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:sql",
+    "onLanguage:jinja-sql"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dbtAutoComplete.refreshManifest",
+        "title": "dbt Auto Complete: Refresh Manifest"
+      }
+    ],
+    "configuration": {
+      "title": "dbt Auto Complete",
+      "properties": {
+        "dbtAutoComplete.manifestRelativePath": {
+          "type": "string",
+          "default": "target/manifest.json",
+          "description": "Relative path from the workspace root to the primary dbt manifest artifact."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "package:vsix": "npx @vscode/vsce package",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.7.2"
+  }
+}
