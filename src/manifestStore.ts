@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { execFile } from "node:child_process";
 import * as vscode from "vscode";
+import { execFileAsync, formatError, pathExists } from "./runtimeUtils";
 
 type DbtManifestNode = {
   name?: string;
@@ -100,7 +100,6 @@ export type ManifestPickerItem = {
 };
 
 type CompletionState = {
-  refs: string[];
   refTargets: RefTarget[];
   refPackages: string[];
   refsByPackage: Map<string, string[]>;
@@ -149,19 +148,6 @@ function addUniqueId(index: Map<string, string[]>, key: string, uniqueId: string
   index.set(key, dedupeAndSort(existingUniqueIds));
 }
 
-function execFileAsync(command: string, args: string[], cwd: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(command, args, { cwd }, (error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    });
-  });
-}
-
 function dedupeAndSort(items: Iterable<string>): string[] {
   return [...new Set(items)].sort((left, right) => left.localeCompare(right));
 }
@@ -184,7 +170,6 @@ export class ManifestStore implements vscode.Disposable {
   private readonly watchers: vscode.FileSystemWatcher[] = [];
   private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
   private completionState: CompletionState = {
-    refs: [],
     refTargets: [],
     refPackages: [],
     refsByPackage: new Map(),
@@ -420,7 +405,7 @@ export class ManifestStore implements vscode.Disposable {
     );
 
     for (const candidate of candidates) {
-      if (!forceRefresh && (await this.pathExists(candidate))) {
+      if (!forceRefresh && (await pathExists(candidate))) {
         return candidate;
       }
     }
@@ -431,14 +416,14 @@ export class ManifestStore implements vscode.Disposable {
       await execFileAsync("dbt", ["parse"], workspaceRoot);
     } catch (error) {
       void vscode.window.showErrorMessage(
-        `Light dbt could not generate a manifest with "dbt parse": ${this.formatError(error)}`
+        `Light dbt could not generate a manifest with "dbt parse": ${formatError(error)}`
       );
       this.setStatus("dbt: parse failed");
       return undefined;
     }
 
     for (const candidate of candidates) {
-      if (await this.pathExists(candidate)) {
+      if (await pathExists(candidate)) {
         return candidate;
       }
     }
@@ -469,18 +454,16 @@ export class ManifestStore implements vscode.Disposable {
 
           return (left.packageName ?? "").localeCompare(right.packageName ?? "");
         });
-      const refs = dedupeAndSort(
-        refTargets.map((target) => {
-          if (target.packageName) {
-            refPackages.add(target.packageName);
-            const packageRefs = refsByPackage.get(target.packageName) ?? [];
-            packageRefs.push(target.name);
-            refsByPackage.set(target.packageName, dedupeAndSort(packageRefs));
-          }
+      for (const target of refTargets) {
+        if (!target.packageName) {
+          continue;
+        }
 
-          return target.name;
-        })
-      );
+        refPackages.add(target.packageName);
+        const packageRefs = refsByPackage.get(target.packageName) ?? [];
+        packageRefs.push(target.name);
+        refsByPackage.set(target.packageName, dedupeAndSort(packageRefs));
+      }
 
       const sourcesByName = new Map<string, string[]>();
       const sourceTargets = Object.values(parsed.sources ?? {})
@@ -513,7 +496,6 @@ export class ManifestStore implements vscode.Disposable {
       }
 
       this.completionState = {
-        refs,
         refTargets,
         refPackages: dedupeAndSort(refPackages),
         refsByPackage,
@@ -524,13 +506,15 @@ export class ManifestStore implements vscode.Disposable {
       this.lineageState = await this.buildLineageState(parsed, workspaceRoot);
       this.hoverState = await this.buildHoverState(parsed, workspaceRoot);
       this.pickerItems = this.buildPickerItems();
-      this.setStatus(`dbt: ${refs.length} refs, ${parsed.sources ? Object.keys(parsed.sources).length : 0} sources`);
+      this.setStatus(
+        `dbt: ${refTargets.length} refs, ${parsed.sources ? Object.keys(parsed.sources).length : 0} sources`
+      );
       this.onDidChangeEmitter.fire();
     } catch (error) {
       this.clearState();
       this.setStatus("dbt: manifest parse failed");
       void vscode.window.showWarningMessage(
-        `Light dbt could not parse ${path.basename(manifestPath)}: ${this.formatError(error)}`
+        `Light dbt could not parse ${path.basename(manifestPath)}: ${formatError(error)}`
       );
     }
   }
@@ -713,7 +697,7 @@ export class ManifestStore implements vscode.Disposable {
       return undefined;
     }
 
-    if (!(await this.pathExists(absolutePath))) {
+    if (!(await pathExists(absolutePath))) {
       return undefined;
     }
 
@@ -722,7 +706,6 @@ export class ManifestStore implements vscode.Disposable {
 
   private clearState(): void {
     this.completionState = {
-      refs: [],
       refTargets: [],
       refPackages: [],
       refsByPackage: new Map(),
@@ -751,23 +734,6 @@ export class ManifestStore implements vscode.Disposable {
     };
     this.pickerItems = [];
     this.onDidChangeEmitter.fire();
-  }
-
-  private async pathExists(targetPath: string): Promise<boolean> {
-    try {
-      await fs.access(targetPath);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private formatError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    return String(error);
   }
 
   private setStatus(text: string): void {

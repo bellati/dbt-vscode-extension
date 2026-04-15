@@ -79,6 +79,7 @@
     }
   },
   "scripts": {
+    "compile": "tsc -p ./",
     "build": "tsc -p ./",
     "package:vsix": "npx @vscode/vsce package",
     "watch": "tsc -watch -p ./"

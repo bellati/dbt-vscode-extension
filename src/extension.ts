@@ -137,6 +137,11 @@ type CallArgument = {
   range: vscode.Range;
 };
 
+type MacroCallTarget = {
+  packageName?: string;
+  name: string;
+};
+
 function getCallArguments(lineText: string, lineNumber: number, callName: string): CallArgument[][] {
   const matches: CallArgument[][] = [];
   const callPattern = new RegExp(`${callName}\\s*\\(([^)]*)\\)`, "g");
@@ -183,6 +188,33 @@ function createManifestQuickPickItem(item: ManifestPickerItem): vscode.QuickPick
     detail: item.detail,
     filePath: item.filePath
   };
+}
+
+function getMacroCallTargetAtPosition(
+  document: vscode.TextDocument,
+  position: vscode.Position
+): MacroCallTarget | undefined {
+  const lineText = document.lineAt(position.line).text;
+  const macroCallPattern = /([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)\s*\(/g;
+  let macroCallMatch = macroCallPattern.exec(lineText);
+
+  while (macroCallMatch) {
+    const identifier = macroCallMatch[1];
+    const startCharacter = macroCallMatch.index;
+    const endCharacter = startCharacter + identifier.length;
+    const range = new vscode.Range(position.line, startCharacter, position.line, endCharacter);
+
+    if (containsPosition(range, position)) {
+      const [packageName, name] = identifier.includes(".")
+        ? (identifier.split(".", 2) as [string, string])
+        : [undefined, identifier];
+      return { packageName, name };
+    }
+
+    macroCallMatch = macroCallPattern.exec(lineText);
+  }
+
+  return undefined;
 }
 
 function createHoverForTargets(kind: "ref" | "source", targets: HoverTarget[]): vscode.Hover | undefined {
@@ -259,27 +291,12 @@ function getMacroHoverAtPosition(
   position: vscode.Position,
   store: ManifestStore
 ): vscode.Hover | undefined {
-  const lineText = document.lineAt(position.line).text;
-  const macroCallPattern = /([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)\s*\(/g;
-  let macroCallMatch = macroCallPattern.exec(lineText);
-
-  while (macroCallMatch) {
-    const identifier = macroCallMatch[1];
-    const startCharacter = macroCallMatch.index;
-    const endCharacter = startCharacter + identifier.length;
-    const range = new vscode.Range(position.line, startCharacter, position.line, endCharacter);
-
-    if (containsPosition(range, position)) {
-      const [packageName, name] = identifier.includes(".")
-        ? (identifier.split(".", 2) as [string, string])
-        : [undefined, identifier];
-      return createMacroHover(store.getHoverTargetsForMacro(name, packageName));
-    }
-
-    macroCallMatch = macroCallPattern.exec(lineText);
+  const target = getMacroCallTargetAtPosition(document, position);
+  if (!target) {
+    return undefined;
   }
 
-  return undefined;
+  return createMacroHover(store.getHoverTargetsForMacro(target.name, target.packageName));
 }
 
 function getRefDefinitionsAtPosition(
@@ -308,27 +325,12 @@ function getMacroDefinitionsAtPosition(
   position: vscode.Position,
   store: ManifestStore
 ): vscode.Location[] {
-  const lineText = document.lineAt(position.line).text;
-  const macroCallPattern = /([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)\s*\(/g;
-  let macroCallMatch = macroCallPattern.exec(lineText);
-
-  while (macroCallMatch) {
-    const identifier = macroCallMatch[1];
-    const startCharacter = macroCallMatch.index;
-    const endCharacter = startCharacter + identifier.length;
-    const range = new vscode.Range(position.line, startCharacter, position.line, endCharacter);
-
-    if (containsPosition(range, position)) {
-      const [packageName, name] = identifier.includes(".")
-        ? (identifier.split(".", 2) as [string, string])
-        : [undefined, identifier];
-      return createDefinitionLocations(store.getDefinitionPathsForMacro(name, packageName));
-    }
-
-    macroCallMatch = macroCallPattern.exec(lineText);
+  const target = getMacroCallTargetAtPosition(document, position);
+  if (!target) {
+    return [];
   }
 
-  return [];
+  return createDefinitionLocations(store.getDefinitionPathsForMacro(target.name, target.packageName));
 }
 
 function shouldTriggerSuggestForChange(change: vscode.TextDocumentContentChangeEvent, document: vscode.TextDocument): boolean {
