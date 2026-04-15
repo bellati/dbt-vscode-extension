@@ -4,6 +4,11 @@
   "description": "Lightweight VS Code extension for interacting with dbt through the dbt CLI.",
   "version": "0.0.1",
   "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bellati/dbt-vscode-extension.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
