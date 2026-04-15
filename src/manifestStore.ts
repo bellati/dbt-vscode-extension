@@ -131,7 +131,6 @@ type HoverState = {
 };
 
 const MANIFEST_VARIANTS = ["target/manifest.json", "target/manifests.json"];
-const DBT_PROJECT_FILE_NAME = "dbt_project.yml";
 
 function createScopedDefinitionKey(name: string, packageName?: string): string {
   return `${packageName ?? ""}:${name}`;
@@ -325,11 +324,6 @@ export class ManifestStore implements vscode.Disposable {
     }
 
     const workspaceRoot = workspaceFolder.uri.fsPath;
-    const hasProjectFile = await this.ensureDbtProjectFile(workspaceRoot);
-    if (!hasProjectFile) {
-      return;
-    }
-
     const dbtAvailable = await this.ensureDbtInstalled();
     if (!dbtAvailable) {
       return;
@@ -351,18 +345,12 @@ export class ManifestStore implements vscode.Disposable {
       return;
     }
 
-    const workspaceRoot = workspaceFolder.uri.fsPath;
-    const hasProjectFile = await this.ensureDbtProjectFile(workspaceRoot, true);
-    if (!hasProjectFile) {
-      return;
-    }
-
     const dbtAvailable = await this.ensureDbtInstalled();
     if (!dbtAvailable) {
       return;
     }
 
-    this.manifestPath = await this.ensureManifest(workspaceRoot, true);
+    this.manifestPath = await this.ensureManifest(workspaceFolder.uri.fsPath, true);
     if (this.manifestPath) {
       await this.reloadManifest(this.manifestPath);
     }
@@ -380,24 +368,6 @@ export class ManifestStore implements vscode.Disposable {
       );
       return false;
     }
-  }
-
-  private async ensureDbtProjectFile(workspaceRoot: string, showWarning = false): Promise<boolean> {
-    const projectFilePath = path.join(workspaceRoot, DBT_PROJECT_FILE_NAME);
-    if (await pathExists(projectFilePath)) {
-      return true;
-    }
-
-    this.clearState();
-    this.manifestPath = undefined;
-    this.hideStatus();
-    if (showWarning) {
-      void vscode.window.showWarningMessage(
-        `Light dbt requires ${DBT_PROJECT_FILE_NAME} in the workspace root before it can refresh the manifest.`
-      );
-    }
-
-    return false;
   }
 
   private createWatchers(): void {

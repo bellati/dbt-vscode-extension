@@ -2,6 +2,7 @@
 
 VS Code extension that:
 
+- activates only when `dbt_project.yml` is present at the workspace root
 - requires the `dbt` CLI to be installed
 - generates a manifest artifact with `dbt parse` when missing
 - watches `manifest.json` and `manifests.json` changes
@@ -48,8 +49,9 @@ npm run package:vsix
 6. Select the generated `light-dbt-<version>.vsix` file from the repository root.
 7. Reload VS Code if prompted.
 8. Open your dbt project as the workspace root.
-9. Make sure `dbt --version` works in your shell.
-10. Open a SQL model and use `ref(` or `source(` to trigger completions.
+9. Make sure `dbt_project.yml` is in that workspace root. The extension only starts when it detects that file there.
+10. Make sure `dbt --version` works in your shell.
+11. Open a SQL model and use `ref(` or `source(` to trigger completions.
 
 Main commands exposed in VS Code:
 
@@ -82,6 +84,7 @@ The view is backed by dbt's manifest graph, but rendered as a normal VS Code tre
 
 - `dbt` must be installed and available on your `PATH`
 - a dbt project must be opened as the VS Code workspace root
+- `dbt_project.yml` must exist at that workspace root or the extension will not activate
 - Node.js 25+ and npm are required for local development
 
 ## Local Development
@@ -112,7 +115,7 @@ npm run watch
 
 ### 1. Prepare a dbt project
 
-Open a real dbt project in the Extension Development Host window. The extension expects the dbt project at the workspace root.
+Open a real dbt project in the Extension Development Host window. The extension expects the dbt project at the workspace root and only activates if `dbt_project.yml` is present there.
 
 If you want to test against a specific manifest path, set:
 

@@ -17,9 +17,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onLanguage:sql",
-    "onLanguage:jinja-sql"
+    "workspaceContains:dbt_project.yml"
   ],
   "main": "./dist/extension.js",
   "contributes": {
