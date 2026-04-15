@@ -77,8 +77,7 @@ function createSourceTargetCompletionOption(target: SourceTarget, quoteCharacter
 function createScopedNameCompletionOption(
   name: string,
   scopeName: string,
-  detailPrefix: string,
-  quoteCharacter: string
+  detailPrefix: string
 ): CompletionOption {
   return {
     label: name,
@@ -153,7 +152,7 @@ const COMPLETION_CONTEXT_RESOLVERS: CompletionContextResolver[] = [
   },
   {
     matches: isRefSecondArgumentContext,
-    resolveItems(prefix, quoteCharacter, store) {
+    resolveItems(prefix, _quoteCharacter, store) {
       const packageName = getRefPackageFromCallPrefix(prefix);
       if (!packageName) {
         return [];
@@ -161,7 +160,7 @@ const COMPLETION_CONTEXT_RESOLVERS: CompletionContextResolver[] = [
 
       return store
         .getRefsForPackage(packageName)
-        .map((refName) => createScopedNameCompletionOption(refName, packageName, "dbt ref from", quoteCharacter));
+        .map((refName) => createScopedNameCompletionOption(refName, packageName, "dbt ref from"));
     }
   },
   {
@@ -172,7 +171,7 @@ const COMPLETION_CONTEXT_RESOLVERS: CompletionContextResolver[] = [
   },
   {
     matches: isSourceTableContext,
-    resolveItems(prefix, quoteCharacter, store) {
+    resolveItems(prefix, _quoteCharacter, store) {
       const sourceName = getSourceNameFromCallPrefix(prefix);
       if (!sourceName) {
         return [];
@@ -180,9 +179,7 @@ const COMPLETION_CONTEXT_RESOLVERS: CompletionContextResolver[] = [
 
       return store
         .getTablesForSource(sourceName)
-        .map((tableName) =>
-          createScopedNameCompletionOption(tableName, sourceName, "dbt source table from", quoteCharacter)
-        );
+        .map((tableName) => createScopedNameCompletionOption(tableName, sourceName, "dbt source table from"));
     }
   }
 ];

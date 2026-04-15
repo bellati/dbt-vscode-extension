@@ -117,7 +117,6 @@ export class ManifestStore implements vscode.Disposable {
     childMap: new Map()
   };
   private manifestPath?: string;
-  private dbtAvailable = false;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
     this.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -137,14 +136,6 @@ export class ManifestStore implements vscode.Disposable {
 
   public get onDidChange(): vscode.Event<void> {
     return this.onDidChangeEmitter.event;
-  }
-
-  public get refs(): string[] {
-    return this.completionState.refs;
-  }
-
-  public get sourceNames(): string[] {
-    return dedupeAndSort(this.completionState.sourcesByName.keys());
   }
 
   public get sourceTargets(): SourceTarget[] {
@@ -205,8 +196,8 @@ export class ManifestStore implements vscode.Disposable {
     }
 
     const workspaceRoot = workspaceFolder.uri.fsPath;
-    this.dbtAvailable = await this.ensureDbtInstalled();
-    if (!this.dbtAvailable) {
+    const dbtAvailable = await this.ensureDbtInstalled();
+    if (!dbtAvailable) {
       return;
     }
 
@@ -226,8 +217,8 @@ export class ManifestStore implements vscode.Disposable {
       return;
     }
 
-    this.dbtAvailable = await this.ensureDbtInstalled();
-    if (!this.dbtAvailable) {
+    const dbtAvailable = await this.ensureDbtInstalled();
+    if (!dbtAvailable) {
       return;
     }
 
@@ -386,7 +377,6 @@ export class ManifestStore implements vscode.Disposable {
         sourcesByName
       };
       this.lineageState = await this.buildLineageState(parsed, workspaceRoot);
-      this.manifestPath = manifestPath;
       this.setStatus(`dbt: ${refs.length} refs, ${parsed.sources ? Object.keys(parsed.sources).length : 0} sources`);
       this.onDidChangeEmitter.fire();
     } catch (error) {
