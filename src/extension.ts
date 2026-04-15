@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { LineageTreeProvider } from "./lineageTree";
 import { ManifestStore, type RefTarget } from "./manifestStore";
 
 function createCompletionItem(
@@ -74,10 +75,19 @@ function isCompletionContext(prefix: string): boolean {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const store = new ManifestStore(context);
+  const lineageTreeProvider = new LineageTreeProvider(store);
   context.subscriptions.push(store);
+  context.subscriptions.push(lineageTreeProvider);
 
   const refreshCommand = vscode.commands.registerCommand("dbtAutoComplete.refreshManifest", async () => {
     await store.refresh();
+  });
+  const refreshLineageCommand = vscode.commands.registerCommand("dbtAutoComplete.refreshLineage", async () => {
+    await store.refresh();
+    await lineageTreeProvider.revealActiveEditor();
+  });
+  const showLineageCommand = vscode.commands.registerCommand("dbtAutoComplete.showLineage", async () => {
+    await lineageTreeProvider.revealActiveEditor(true);
   });
 
   const provider = vscode.languages.registerCompletionItemProvider(
@@ -152,8 +162,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void vscode.commands.executeCommand("editor.action.triggerSuggest");
   });
 
-  context.subscriptions.push(refreshCommand, provider, triggerSuggestOnDelete);
+  const activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => {
+    void lineageTreeProvider.revealActiveEditor();
+  });
+  const manifestListener = store.onDidChange(() => {
+    void lineageTreeProvider.revealActiveEditor();
+  });
+  const configListener = vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration("dbtAutoComplete.lineage.maxNodes")) {
+      lineageTreeProvider.refresh();
+    }
+  });
+
+  context.subscriptions.push(
+    refreshCommand,
+    refreshLineageCommand,
+    showLineageCommand,
+    provider,
+    triggerSuggestOnDelete,
+    activeEditorListener,
+    manifestListener,
+    configListener
+  );
   await store.initialize();
+  await lineageTreeProvider.revealActiveEditor();
 }
 
 export function deactivate(): void {

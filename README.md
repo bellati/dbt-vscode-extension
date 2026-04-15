@@ -6,6 +6,7 @@ VS Code extension that:
 - generates a manifest artifact with `dbt parse` when missing
 - watches `manifest.json` and `manifests.json` changes
 - provides autocomplete for `ref()` and `source()`
+- provides a lineage tree view for the active dbt model
 
 `source()` completion is two-level:
 
@@ -16,6 +17,23 @@ VS Code extension that:
 
 - single argument: `ref('model_name')`
 - two arguments: `ref('package_name', 'model_name')`
+
+## Lineage View
+
+The extension adds a `Lineage` tree view inside the `dbt Auto Complete` activity bar container in VS Code.
+
+What to expect:
+
+- the tree follows the active dbt model file in the editor
+- the current model is the root item
+- `Upstream` shows dependencies
+- `Downstream` shows dependents
+- sources can appear only as upstream leaf nodes
+- local nodes use a green icon and can be opened
+- external or unresolved nodes use a gray icon and are shown for visibility, but they do not open files
+- if the lineage is truncated by the node limit, the branch ends with `… more nodes not shown`
+
+The view is backed by dbt's manifest graph, but rendered as a normal VS Code tree. Shared dependencies can therefore appear more than once in different branches.
 
 ## Requirements
 
@@ -43,6 +61,7 @@ After installation:
 1. Open your dbt project as the workspace root.
 2. Make sure `dbt --version` works in your shell.
 3. Open a SQL model and use `ref(` or `source(` to trigger completions.
+4. Open the `dbt Auto Complete` activity bar container to inspect lineage for the active model.
 
 ### If you only have the source repository
 
@@ -90,8 +109,10 @@ When the extension activates:
 You can also run the command palette action:
 
 - `dbt Auto Complete: Refresh Manifest`
+- `dbt Auto Complete: Refresh Lineage`
+- `dbt Auto Complete: Show Lineage`
 
-This forces the extension to check `dbt` again and reload the manifest.
+These commands force the extension to check `dbt` again, reload the manifest, and reveal the lineage tree for the active model.
 
 ### 3. Verify manifest generation
 
@@ -169,10 +190,53 @@ Expected result:
 
 - the extension detects the manifest file change
 - completion results update without restarting VS Code
+- the lineage tree updates without restarting VS Code
+
+### 7. Verify the lineage tree
+
+Open a dbt model file that exists in the manifest.
+
+Expected result:
+
+- the `Lineage` view shows the current model as the root item
+- the view shows `Upstream` and `Downstream` branches
+- expanding a local model node opens further lineage within the configured limits
+- clicking a local model, seed, or snapshot node opens the corresponding file
+- clicking a local source node opens its YAML file when the manifest points to one in the workspace
+- gray nodes stay visible but do not open a file
+
+If you open a file that is not a dbt model represented in the manifest, the lineage view should show an empty-state message instead of stale lineage.
+
+### 8. Verify lineage limits
+
+Add settings like:
+
+```json
+"dbtAutoComplete.lineage.maxNodes": 30
+```
+
+Expected result:
+
+- the tree keeps traversing lineage until it exhausts the node budget
+- total lineage nodes are capped across both branches
+- when a limit is hit, the branch shows `… more nodes not shown`
+- changing these settings rebuilds the tree without restarting VS Code
+
+## Commands
+
+- `dbt Auto Complete: Refresh Manifest`: regenerate or reload the dbt manifest artifact
+- `dbt Auto Complete: Show Lineage`: reveal lineage for the current active dbt model
+- `dbt Auto Complete: Refresh Lineage`: refresh manifest-backed lineage data and rebuild the tree
+
+## Configuration
+
+- `dbtAutoComplete.manifestRelativePath`: relative path from the workspace root to the manifest artifact
+- `dbtAutoComplete.lineage.maxNodes`: maximum total number of lineage nodes to materialize across both branches
 
 ## Troubleshooting
 
 - If you do not see completions, make sure the file is recognized as `sql` or `jinja-sql`.
+- If you do not see lineage, make sure the active file is a dbt model represented in the manifest.
 - If manifest generation fails, run `dbt parse` manually in the dbt project root to confirm the project is valid.
 - If `dbt` is installed but not found, start VS Code from a shell where `dbt --version` works, or ensure the binary is on your GUI environment `PATH`.
 - If your manifest is not in `target/manifest.json`, set `dbtAutoComplete.manifestRelativePath` to the correct relative path.

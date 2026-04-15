@@ -3,14 +3,44 @@ import * as path from "node:path";
 import { execFile } from "node:child_process";
 import * as vscode from "vscode";
 
+type DbtManifestNode = {
+  name?: string;
+  package_name?: string;
+  resource_type?: string;
+  original_file_path?: string;
+  path?: string;
+};
+
+type DbtManifestSource = {
+  source_name?: string;
+  name?: string;
+  package_name?: string;
+  original_file_path?: string;
+  path?: string;
+};
+
 type DbtManifest = {
-  nodes?: Record<string, { name?: string; package_name?: string; resource_type?: string }>;
-  sources?: Record<string, { source_name?: string; name?: string }>;
+  nodes?: Record<string, DbtManifestNode>;
+  sources?: Record<string, DbtManifestSource>;
+  parent_map?: Record<string, string[]>;
+  child_map?: Record<string, string[]>;
 };
 
 export type RefTarget = {
   name: string;
   packageName?: string;
+};
+
+export type LineageDirection = "upstream" | "downstream";
+
+export type LineageNode = {
+  uniqueId: string;
+  displayName: string;
+  packageName?: string;
+  resourceType: "model" | "seed" | "snapshot" | "source";
+  sourceName?: string;
+  filePath?: string;
+  isLocal: boolean;
 };
 
 type CompletionState = {
@@ -19,6 +49,13 @@ type CompletionState = {
   refPackages: string[];
   refsByPackage: Map<string, string[]>;
   sourcesByName: Map<string, string[]>;
+};
+
+type LineageState = {
+  nodesByUniqueId: Map<string, LineageNode>;
+  fileToUniqueId: Map<string, string>;
+  parentMap: Map<string, string[]>;
+  childMap: Map<string, string[]>;
 };
 
 const MANIFEST_VARIANTS = ["target/manifest.json", "target/manifests.json"];
@@ -40,15 +77,35 @@ function dedupeAndSort(items: Iterable<string>): string[] {
   return [...new Set(items)].sort((left, right) => left.localeCompare(right));
 }
 
+function normalizePathCase(filePath: string): string {
+  return path.normalize(filePath);
+}
+
+function mapToSortedArrays(input: Record<string, string[] | undefined>): Map<string, string[]> {
+  const mapped = new Map<string, string[]>();
+  for (const [key, values] of Object.entries(input)) {
+    mapped.set(key, dedupeAndSort(values ?? []));
+  }
+
+  return mapped;
+}
+
 export class ManifestStore implements vscode.Disposable {
   private readonly statusBar: vscode.StatusBarItem;
   private readonly watchers: vscode.FileSystemWatcher[] = [];
-  private state: CompletionState = {
+  private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
+  private completionState: CompletionState = {
     refs: [],
     refTargets: [],
     refPackages: [],
     refsByPackage: new Map(),
     sourcesByName: new Map()
+  };
+  private lineageState: LineageState = {
+    nodesByUniqueId: new Map(),
+    fileToUniqueId: new Map(),
+    parentMap: new Map(),
+    childMap: new Map()
   };
   private manifestPath?: string;
   private dbtAvailable = false;
@@ -65,31 +122,66 @@ export class ManifestStore implements vscode.Disposable {
       watcher.dispose();
     }
 
+    this.onDidChangeEmitter.dispose();
     this.statusBar.dispose();
   }
 
+  public get onDidChange(): vscode.Event<void> {
+    return this.onDidChangeEmitter.event;
+  }
+
   public get refs(): string[] {
-    return this.state.refs;
+    return this.completionState.refs;
   }
 
   public get sourceNames(): string[] {
-    return dedupeAndSort(this.state.sourcesByName.keys());
+    return dedupeAndSort(this.completionState.sourcesByName.keys());
   }
 
   public get refTargets(): RefTarget[] {
-    return this.state.refTargets;
+    return this.completionState.refTargets;
   }
 
   public get refPackages(): string[] {
-    return this.state.refPackages;
+    return this.completionState.refPackages;
   }
 
   public getRefsForPackage(packageName: string): string[] {
-    return this.state.refsByPackage.get(packageName) ?? [];
+    return this.completionState.refsByPackage.get(packageName) ?? [];
   }
 
   public getTablesForSource(sourceName: string): string[] {
-    return this.state.sourcesByName.get(sourceName) ?? [];
+    return this.completionState.sourcesByName.get(sourceName) ?? [];
+  }
+
+  public getLineageNode(uniqueId: string): LineageNode | undefined {
+    return this.lineageState.nodesByUniqueId.get(uniqueId);
+  }
+
+  public getLineageParents(uniqueId: string): string[] {
+    return this.lineageState.parentMap.get(uniqueId) ?? [];
+  }
+
+  public getLineageChildren(uniqueId: string): string[] {
+    return this.lineageState.childMap.get(uniqueId) ?? [];
+  }
+
+  public getUniqueIdForFile(filePath: string): string | undefined {
+    return this.lineageState.fileToUniqueId.get(normalizePathCase(filePath));
+  }
+
+  public getModelForFile(filePath: string): LineageNode | undefined {
+    const uniqueId = this.getUniqueIdForFile(filePath);
+    if (!uniqueId) {
+      return undefined;
+    }
+
+    const node = this.getLineageNode(uniqueId);
+    if (!node || node.resourceType !== "model") {
+      return undefined;
+    }
+
+    return node;
   }
 
   public async initialize(): Promise<void> {
@@ -161,13 +253,7 @@ export class ManifestStore implements vscode.Disposable {
       watcher.onDidCreate((uri) => void this.reloadManifest(uri.fsPath));
       watcher.onDidChange((uri) => void this.reloadManifest(uri.fsPath));
       watcher.onDidDelete(() => {
-        this.state = {
-          refs: [],
-          refTargets: [],
-          refPackages: [],
-          refsByPackage: new Map(),
-          sourcesByName: new Map()
-        };
+        this.clearState();
         this.manifestPath = undefined;
         this.setStatus("dbt: manifest deleted");
       });
@@ -181,10 +267,9 @@ export class ManifestStore implements vscode.Disposable {
       .getConfiguration("dbtAutoComplete")
       .get<string>("manifestRelativePath", "target/manifest.json");
 
-    const candidates = dedupeAndSort([
-      configuredRelativePath,
-      ...MANIFEST_VARIANTS
-    ]).map((relativePath) => path.join(workspaceRoot, relativePath));
+    const candidates = dedupeAndSort([configuredRelativePath, ...MANIFEST_VARIANTS]).map((relativePath) =>
+      path.join(workspaceRoot, relativePath)
+    );
 
     for (const candidate of candidates) {
       if (!forceRefresh && (await this.pathExists(candidate))) {
@@ -221,6 +306,7 @@ export class ManifestStore implements vscode.Disposable {
     try {
       const raw = await fs.readFile(manifestPath, "utf8");
       const parsed = JSON.parse(raw) as DbtManifest;
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
       const refPackages = new Set<string>();
       const refsByPackage = new Map<string, string[]>();
@@ -259,21 +345,116 @@ export class ManifestStore implements vscode.Disposable {
         sourcesByName.set(source.source_name, dedupeAndSort(tables));
       }
 
-      this.state = {
+      this.completionState = {
         refs,
         refTargets,
         refPackages: dedupeAndSort(refPackages),
         refsByPackage,
         sourcesByName
       };
+      this.lineageState = await this.buildLineageState(parsed, workspaceRoot);
       this.manifestPath = manifestPath;
       this.setStatus(`dbt: ${refs.length} refs, ${parsed.sources ? Object.keys(parsed.sources).length : 0} sources`);
+      this.onDidChangeEmitter.fire();
     } catch (error) {
+      this.clearState();
       this.setStatus("dbt: manifest parse failed");
       void vscode.window.showWarningMessage(
         `dbt Auto Complete could not parse ${path.basename(manifestPath)}: ${this.formatError(error)}`
       );
     }
+  }
+
+  private async buildLineageState(parsed: DbtManifest, workspaceRoot?: string): Promise<LineageState> {
+    const nodesByUniqueId = new Map<string, LineageNode>();
+    const fileToUniqueId = new Map<string, string>();
+
+    for (const [uniqueId, node] of Object.entries(parsed.nodes ?? {})) {
+      if (!this.isRefableNode(node)) {
+        continue;
+      }
+
+      const resolvedFilePath = await this.resolveLocalPath(workspaceRoot, node.original_file_path ?? node.path);
+      const resourceType = node.resource_type;
+      const lineageNode: LineageNode = {
+        uniqueId,
+        displayName: node.name,
+        packageName: node.package_name,
+        resourceType,
+        filePath: resolvedFilePath,
+        isLocal: Boolean(resolvedFilePath)
+      };
+      nodesByUniqueId.set(uniqueId, lineageNode);
+      if (resolvedFilePath) {
+        fileToUniqueId.set(normalizePathCase(resolvedFilePath), uniqueId);
+      }
+    }
+
+    for (const [uniqueId, source] of Object.entries(parsed.sources ?? {})) {
+      if (!source.source_name || !source.name) {
+        continue;
+      }
+
+      const resolvedFilePath = await this.resolveLocalPath(workspaceRoot, source.original_file_path ?? source.path);
+      const lineageNode: LineageNode = {
+        uniqueId,
+        displayName: `${source.source_name}.${source.name}`,
+        packageName: source.package_name,
+        resourceType: "source",
+        sourceName: source.source_name,
+        filePath: resolvedFilePath,
+        isLocal: Boolean(resolvedFilePath)
+      };
+      nodesByUniqueId.set(uniqueId, lineageNode);
+      if (resolvedFilePath) {
+        fileToUniqueId.set(normalizePathCase(resolvedFilePath), uniqueId);
+      }
+    }
+
+    return {
+      nodesByUniqueId,
+      fileToUniqueId,
+      parentMap: mapToSortedArrays(parsed.parent_map ?? {}),
+      childMap: mapToSortedArrays(parsed.child_map ?? {})
+    };
+  }
+
+  private async resolveLocalPath(
+    workspaceRoot: string | undefined,
+    relativePath: string | undefined
+  ): Promise<string | undefined> {
+    if (!workspaceRoot || !relativePath) {
+      return undefined;
+    }
+
+    const absolutePath = path.resolve(workspaceRoot, relativePath);
+    const relativeToWorkspace = path.relative(workspaceRoot, absolutePath);
+    if (relativeToWorkspace.startsWith("..") || path.isAbsolute(relativeToWorkspace)) {
+      return undefined;
+    }
+
+    if (!(await this.pathExists(absolutePath))) {
+      return undefined;
+    }
+
+    return absolutePath;
+  }
+
+  private clearState(): void {
+    this.completionState = {
+      refs: [],
+      refTargets: [],
+      refPackages: [],
+      refsByPackage: new Map(),
+      sourcesByName: new Map()
+    };
+    this.lineageState = {
+      nodesByUniqueId: new Map(),
+      fileToUniqueId: new Map(),
+      parentMap: new Map(),
+      childMap: new Map()
+    };
+    this.onDidChangeEmitter.fire();
   }
 
   private async pathExists(targetPath: string): Promise<boolean> {
@@ -297,12 +478,11 @@ export class ManifestStore implements vscode.Disposable {
     this.statusBar.text = text;
   }
 
-  private isRefableNode(node: {
-    name?: string;
-    package_name?: string;
-    resource_type?: string;
-  }): node is { name: string; package_name?: string; resource_type?: string } {
-    if (!node.name) {
+  private isRefableNode(node: DbtManifestNode): node is DbtManifestNode & {
+    name: string;
+    resource_type: "model" | "seed" | "snapshot";
+  } {
+    if (!node.name || !node.resource_type) {
       return false;
     }
 

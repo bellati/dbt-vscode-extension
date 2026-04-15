@@ -22,8 +22,33 @@
       {
         "command": "dbtAutoComplete.refreshManifest",
         "title": "dbt Auto Complete: Refresh Manifest"
+      },
+      {
+        "command": "dbtAutoComplete.showLineage",
+        "title": "dbt Auto Complete: Show Lineage"
+      },
+      {
+        "command": "dbtAutoComplete.refreshLineage",
+        "title": "dbt Auto Complete: Refresh Lineage"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dbtAutoComplete",
+          "title": "dbt Auto Complete",
+          "icon": "media/dbt.svg"
+        }
+      ]
+    },
+    "views": {
+      "dbtAutoComplete": [
+        {
+          "id": "dbtAutoComplete.lineage",
+          "name": "Lineage"
+        }
+      ]
+    },
     "configuration": {
       "title": "dbt Auto Complete",
       "properties": {
@@ -31,6 +56,12 @@
           "type": "string",
           "default": "target/manifest.json",
           "description": "Relative path from the workspace root to the primary dbt manifest artifact."
+        },
+        "dbtAutoComplete.lineage.maxNodes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "Maximum total number of lineage nodes to materialize across upstream and downstream branches."
         }
       }
     }
