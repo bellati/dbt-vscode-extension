@@ -37,20 +37,6 @@ function createCompletionItem(option: CompletionOption, quoteCharacter?: string)
   return item;
 }
 
-function createPackageCompletionOption(
-  packageName: string,
-  quoteCharacter: string,
-  detail: string
-): CompletionOption {
-  return {
-    label: packageName,
-    detail,
-    insertText: new vscode.SnippetString(`${packageName}${quoteCharacter}, ${quoteCharacter}$1`),
-    kind: vscode.CompletionItemKind.Module,
-    scopeHint: "package"
-  };
-}
-
 function createScopedTargetCompletionOption(
   name: string,
   scopeName: string | undefined,
@@ -351,12 +337,7 @@ const COMPLETION_CONTEXT_RESOLVERS: CompletionContextResolver[] = [
   {
     matches: isRefContext,
     resolveItems(_prefix, quoteCharacter, store) {
-      return [
-        ...store.refPackages.map((packageName) =>
-          createPackageCompletionOption(packageName, quoteCharacter, "dbt ref package")
-        ),
-        ...store.refTargets.map((target) => createRefTargetCompletionOption(target, quoteCharacter))
-      ];
+      return store.refTargets.map((target) => createRefTargetCompletionOption(target, quoteCharacter));
     }
   },
   {

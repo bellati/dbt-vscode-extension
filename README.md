@@ -13,15 +13,13 @@ VS Code extension that:
 - opens the compiled SQL for the active dbt model on demand
 - can force a recompilation of the active model before opening the compiled SQL
 
-`source()` completion is manifest-backed:
+`ref()` and `source()` completion are manifest-backed:
 
-- typing the first argument suggests source table entries and can insert the full `source('source_name', 'table_name')` form
-- typing the second argument after `source('source_name', '` suggests only tables for that source
-
-`ref()` completion supports both dbt styles:
-
-- single argument: `ref('model_name')`
-- two arguments: `ref('package_name', 'model_name')`
+- typing the first argument suggests only target names
+- the completion list shows the scope on the right side, such as the package for `ref()` or the source name for `source()`
+- selecting an item expands to the full two-argument form and preserves whether you started with `'` or `"`
+- typing the second argument after `ref('package_name', '` or `source('source_name', '` suggests only targets in that scope
+- if you delete inside the current call, suggestions reopen and keep filtering
 
 ## Get Started
 
@@ -211,20 +209,10 @@ select * from {{ ref('
 Expected result:
 
 - VS Code suggests model names from `manifest.json`
-- VS Code also suggests package names for cross-project refs
+- each suggestion shows the package as a hint in the completion list
 - selecting a model with a known package inserts the full form, for example `ref('data_platform', 'ontology_entitized_jobs_title')`
 - inserted completions preserve the quote style you started with, so `ref("` yields double-quoted insertions
 - if you backspace while editing the current ref text, suggestions should reopen and keep filtering instead of disappearing
-
-If you choose a package suggestion, it inserts the first argument and places the cursor inside the second argument:
-
-```sql
-select * from {{ ref('data_platform', '
-```
-
-Expected result:
-
-- VS Code suggests only refs available in `data_platform`
 
 ### 5. Verify autocomplete for `source()`
 
@@ -237,6 +225,7 @@ select * from {{ source('
 Expected result:
 
 - VS Code suggests source table entries from the manifest
+- each suggestion shows the source name as a hint in the completion list
 - inserted completions preserve whether you typed `'` or `"`
 - selecting a table inserts the full form, for example `source('jaffle_shop', 'customers')`
 - if you backspace while editing the current source text, suggestions should reopen automatically
