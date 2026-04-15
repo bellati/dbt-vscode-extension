@@ -1,7 +1,7 @@
 {
-  "name": "dbt-auto-complete",
-  "displayName": "dbt Auto Complete",
-  "description": "VS Code autocomplete for dbt refs and sources backed by the dbt manifest artifact.",
+  "name": "light-dbt",
+  "displayName": "Light dbt",
+  "description": "Lightweight VS Code extension for interacting with dbt through the dbt CLI.",
   "version": "0.0.1",
   "publisher": "local",
   "engines": {
@@ -21,30 +21,30 @@
     "commands": [
       {
         "command": "dbtAutoComplete.refreshManifest",
-        "title": "dbt Auto Complete: Refresh Manifest"
+        "title": "Light dbt: Refresh Manifest"
       },
       {
         "command": "dbtAutoComplete.showLineage",
-        "title": "dbt Auto Complete: Show Lineage"
+        "title": "Light dbt: Show Lineage"
       },
       {
         "command": "dbtAutoComplete.refreshLineage",
-        "title": "dbt Auto Complete: Refresh Lineage"
+        "title": "Light dbt: Refresh Lineage"
       },
       {
         "command": "dbtAutoComplete.showCompiledModel",
-        "title": "dbt Auto Complete: Show Compiled Model"
+        "title": "Light dbt: Show Compiled Model"
       },
       {
         "command": "dbtAutoComplete.recompileAndShowModel",
-        "title": "dbt Auto Complete: Recompile and Show Model"
+        "title": "Light dbt: Recompile and Show Model"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "dbtAutoComplete",
-          "title": "dbt Auto Complete",
+          "title": "Light dbt",
           "icon": "media/dbt.svg"
         }
       ]
@@ -58,7 +58,7 @@
       ]
     },
     "configuration": {
-      "title": "dbt Auto Complete",
+      "title": "Light dbt",
       "properties": {
         "dbtAutoComplete.manifestRelativePath": {
           "type": "string",

@@ -1,4 +1,4 @@
-# dbt Auto Complete
+# Light dbt
 
 VS Code extension that:
 
@@ -22,15 +22,15 @@ VS Code extension that:
 
 Main commands exposed in VS Code:
 
-- `dbt Auto Complete: Refresh Manifest`: regenerate or reload the dbt manifest artifact so completions, model lookup, and lineage stay in sync with the project.
-- `dbt Auto Complete: Refresh Lineage`: refresh the manifest-backed data and immediately rebuild the lineage tree for the active editor.
-- `dbt Auto Complete: Show Lineage`: reveal the lineage view for the current active dbt model without forcing a manifest refresh first.
-- `dbt Auto Complete: Show Compiled Model`: open the compiled SQL for the active model, compiling first only when the compiled artifact is missing.
-- `dbt Auto Complete: Recompile and Show Model`: always run `dbt compile` for the active model and then open the freshly generated compiled SQL.
+- `Light dbt: Refresh Manifest`: regenerate or reload the dbt manifest artifact so completions, model lookup, and lineage stay in sync with the project.
+- `Light dbt: Refresh Lineage`: refresh the manifest-backed data and immediately rebuild the lineage tree for the active editor.
+- `Light dbt: Show Lineage`: reveal the lineage view for the current active dbt model without forcing a manifest refresh first.
+- `Light dbt: Show Compiled Model`: open the compiled SQL for the active model, compiling first only when the compiled artifact is missing.
+- `Light dbt: Recompile and Show Model`: always run `dbt compile` for the active model and then open the freshly generated compiled SQL.
 
 ## Lineage View
 
-The extension adds a `Lineage` tree view inside the `dbt Auto Complete` activity bar container in VS Code.
+The extension adds a `Lineage` tree view inside the `Light dbt` activity bar container in VS Code.
 
 What to expect:
 
@@ -63,7 +63,7 @@ Once you have a `.vsix` file:
 2. Open the Extensions view.
 3. Click the `...` menu in the top-right of the Extensions panel.
 4. Choose `Install from VSIX...`.
-5. Select the `.vsix` file for `dbt Auto Complete`.
+5. Select the `.vsix` file for `Light dbt`.
 6. Reload VS Code if prompted.
 
 After installation:
@@ -71,7 +71,7 @@ After installation:
 1. Open your dbt project as the workspace root.
 2. Make sure `dbt --version` works in your shell.
 3. Open a SQL model and use `ref(` or `source(` to trigger completions.
-4. Open the `dbt Auto Complete` activity bar container to inspect lineage for the active model.
+4. Open the `Light dbt` activity bar container to inspect lineage for the active model.
 
 ### If you only have the source repository
 
@@ -98,7 +98,7 @@ npm run watch
 ```
 
 4. Open this repository in VS Code.
-5. Press `F5` and choose `Run dbt Auto Complete`.
+5. Press `F5` and choose `Run Light dbt`.
 6. A new Extension Development Host window will open with the extension loaded.
 
 ## How To Test
@@ -124,11 +124,11 @@ When the extension activates:
 
 You can also run the command palette action:
 
-- `dbt Auto Complete: Refresh Manifest`
-- `dbt Auto Complete: Refresh Lineage`
-- `dbt Auto Complete: Show Lineage`
-- `dbt Auto Complete: Show Compiled Model`
-- `dbt Auto Complete: Recompile and Show Model`
+- `Light dbt: Refresh Manifest`
+- `Light dbt: Refresh Lineage`
+- `Light dbt: Show Lineage`
+- `Light dbt: Show Compiled Model`
+- `Light dbt: Recompile and Show Model`
 
 These commands force the extension to check `dbt` again, reload the manifest, and reveal the lineage tree for the active model.
 
@@ -148,7 +148,7 @@ For the recompile command:
 
 Delete `target/manifest.json` if it already exists, then run:
 
-- `dbt Auto Complete: Refresh Manifest`
+- `Light dbt: Refresh Manifest`
 
 Expected result:
 
@@ -257,8 +257,8 @@ Expected result:
 
 Open a dbt model file that exists in the manifest, then run:
 
-- `dbt Auto Complete: Show Compiled Model`
-- `dbt Auto Complete: Recompile and Show Model`
+- `Light dbt: Show Compiled Model`
+- `Light dbt: Recompile and Show Model`
 
 Expected result:
 
@@ -269,11 +269,11 @@ Expected result:
 
 ## Commands
 
-- `dbt Auto Complete: Refresh Manifest`: regenerate or reload the dbt manifest artifact
-- `dbt Auto Complete: Refresh Lineage`: refresh manifest-backed lineage data and rebuild the tree
-- `dbt Auto Complete: Show Lineage`: reveal lineage for the current active dbt model
-- `dbt Auto Complete: Show Compiled Model`: open the compiled SQL for the active model, compiling only if the compiled artifact is missing
-- `dbt Auto Complete: Recompile and Show Model`: force `dbt compile` for the active model and then open the compiled SQL from `target/compiled/...`
+- `Light dbt: Refresh Manifest`: regenerate or reload the dbt manifest artifact
+- `Light dbt: Refresh Lineage`: refresh manifest-backed lineage data and rebuild the tree
+- `Light dbt: Show Lineage`: reveal lineage for the current active dbt model
+- `Light dbt: Show Compiled Model`: open the compiled SQL for the active model, compiling only if the compiled artifact is missing
+- `Light dbt: Recompile and Show Model`: force `dbt compile` for the active model and then open the compiled SQL from `target/compiled/...`
 
 ## Development Scripts
 
@@ -316,7 +316,7 @@ npx @vscode/vsce package
 
 Expected result:
 
-- a file like `dbt-auto-complete-0.0.1.vsix` is created in the repository root
+- a file like `light-dbt-0.0.1.vsix` is created in the repository root
 
 Recommended packaging flow:
 

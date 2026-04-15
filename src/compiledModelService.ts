@@ -49,7 +49,7 @@ export class CompiledModelService {
         await this.compileModel(workspaceRoot, node.displayName, node.originalFilePath, forceRecompile);
       } catch (error) {
         void vscode.window.showErrorMessage(
-          `dbt Auto Complete could not compile ${node.displayName}: ${this.formatError(error)}`
+          `Light dbt could not compile ${node.displayName}: ${this.formatError(error)}`
         );
         return;
       }
@@ -73,11 +73,11 @@ export class CompiledModelService {
     forceRecompile: boolean
   ): Promise<void> {
     const title = forceRecompile
-      ? `dbt Auto Complete: Recompiling ${displayName}`
-      : `dbt Auto Complete: Compiling ${displayName}`;
+      ? `Light dbt: Recompiling ${displayName}`
+      : `Light dbt: Compiling ${displayName}`;
     const statusMessage = forceRecompile
-      ? `dbt Auto Complete: recompiling ${displayName}...`
-      : `dbt Auto Complete: compiling ${displayName}...`;
+      ? `Light dbt: recompiling ${displayName}...`
+      : `Light dbt: compiling ${displayName}...`;
 
     await vscode.window.withProgress(
       {
@@ -102,7 +102,7 @@ export class CompiledModelService {
       return true;
     } catch {
       void vscode.window.showErrorMessage(
-        "dbt Auto Complete requires the dbt CLI to be installed and available on PATH."
+        "Light dbt requires the dbt CLI to be installed and available on PATH."
       );
       return false;
     }

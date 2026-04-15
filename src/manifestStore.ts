@@ -121,7 +121,7 @@ export class ManifestStore implements vscode.Disposable {
 
   public constructor(private readonly context: vscode.ExtensionContext) {
     this.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    this.statusBar.name = "dbt Auto Complete";
+    this.statusBar.name = "Light dbt";
     this.statusBar.command = "dbtAutoComplete.refreshManifest";
     this.statusBar.show();
   }
@@ -245,7 +245,7 @@ export class ManifestStore implements vscode.Disposable {
     } catch {
       this.setStatus("dbt: CLI missing");
       void vscode.window.showErrorMessage(
-        "dbt Auto Complete requires the dbt CLI to be installed and available on PATH."
+        "Light dbt requires the dbt CLI to be installed and available on PATH."
       );
       return false;
     }
@@ -296,7 +296,7 @@ export class ManifestStore implements vscode.Disposable {
       await execFileAsync("dbt", ["parse"], workspaceRoot);
     } catch (error) {
       void vscode.window.showErrorMessage(
-        `dbt Auto Complete could not generate a manifest with "dbt parse": ${this.formatError(error)}`
+        `Light dbt could not generate a manifest with "dbt parse": ${this.formatError(error)}`
       );
       this.setStatus("dbt: parse failed");
       return undefined;
@@ -310,7 +310,7 @@ export class ManifestStore implements vscode.Disposable {
 
     this.setStatus("dbt: manifest missing");
     void vscode.window.showWarningMessage(
-      "dbt Auto Complete ran \"dbt parse\" but no manifest.json or manifests.json file was found."
+      "Light dbt ran \"dbt parse\" but no manifest.json or manifests.json file was found."
     );
     return undefined;
   }
@@ -393,7 +393,7 @@ export class ManifestStore implements vscode.Disposable {
       this.clearState();
       this.setStatus("dbt: manifest parse failed");
       void vscode.window.showWarningMessage(
-        `dbt Auto Complete could not parse ${path.basename(manifestPath)}: ${this.formatError(error)}`
+        `Light dbt could not parse ${path.basename(manifestPath)}: ${this.formatError(error)}`
       );
     }
   }
