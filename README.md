@@ -172,8 +172,9 @@ select * from {{ source('
 
 Expected result:
 
-- VS Code suggests available source names
+- VS Code suggests available source table names
 - inserted completions preserve whether you typed `'` or `"`
+- selecting a table inserts the full form, for example `source('jaffle_shop', 'customers')`
 - if you backspace while editing the current source text, suggestions should reopen automatically
 
 Then continue with:

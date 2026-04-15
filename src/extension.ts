@@ -1,36 +1,92 @@
 import * as vscode from "vscode";
 import { CompiledModelService } from "./compiledModelService";
 import { LineageTreeProvider } from "./lineageTree";
-import { ManifestStore, type RefTarget } from "./manifestStore";
+import { ManifestStore, type RefTarget, type SourceTarget } from "./manifestStore";
 
-function createCompletionItem(
-  label: string,
-  detail: string,
-  quoteCharacter?: string,
-  kind: vscode.CompletionItemKind = vscode.CompletionItemKind.Value
-): vscode.CompletionItem {
-  const item = new vscode.CompletionItem(label, kind);
+type CompletionInsertText = string | vscode.SnippetString;
+
+type CompletionOption = {
+  label: string;
+  detail: string;
+  insertText: CompletionInsertText;
+  filterText?: string;
+  kind?: vscode.CompletionItemKind;
+  scopeHint?: string;
+};
+
+type CompletionContextResolver = {
+  matches(prefix: string): boolean;
+  resolveItems(prefix: string, quoteCharacter: string, store: ManifestStore): CompletionOption[];
+};
+
+function createCompletionItem(option: CompletionOption, quoteCharacter?: string): vscode.CompletionItem {
+  const { label, detail, insertText, filterText, kind = vscode.CompletionItemKind.Value, scopeHint } = option;
+  const item = new vscode.CompletionItem({ label, description: scopeHint }, kind);
   item.detail = detail;
-  item.insertText = label;
+  item.insertText = insertText;
+  item.filterText = filterText;
   item.commitCharacters = quoteCharacter ? [quoteCharacter] : undefined;
   return item;
 }
 
-function createRefPackageCompletionItem(packageName: string, quoteCharacter: string): vscode.CompletionItem {
-  const item = new vscode.CompletionItem(packageName, vscode.CompletionItemKind.Module);
-  item.detail = "dbt ref package";
-  item.insertText = new vscode.SnippetString(`${packageName}${quoteCharacter}, ${quoteCharacter}$1`);
-  return item;
+function createPackageCompletionOption(
+  packageName: string,
+  quoteCharacter: string,
+  detail: string
+): CompletionOption {
+  return {
+    label: packageName,
+    detail,
+    insertText: new vscode.SnippetString(`${packageName}${quoteCharacter}, ${quoteCharacter}$1`),
+    kind: vscode.CompletionItemKind.Module,
+    scopeHint: "package"
+  };
 }
 
-function createRefTargetCompletionItem(target: RefTarget, quoteCharacter: string): vscode.CompletionItem {
-  const item = new vscode.CompletionItem(target.name, vscode.CompletionItemKind.Reference);
-  item.detail = target.packageName ? `dbt ref from ${target.packageName}` : "dbt ref";
-  item.insertText = target.packageName
-    ? new vscode.SnippetString(`${target.packageName}${quoteCharacter}, ${quoteCharacter}${target.name}`)
-    : target.name;
-  item.filterText = target.name;
-  return item;
+function createScopedTargetCompletionOption(
+  name: string,
+  scopeName: string | undefined,
+  quoteCharacter: string,
+  detailWithoutScope: string,
+  detailWithScope: string
+): CompletionOption {
+  return {
+    label: name,
+    detail: scopeName ? `${detailWithScope} ${scopeName}` : detailWithoutScope,
+    insertText: scopeName ? new vscode.SnippetString(`${scopeName}${quoteCharacter}, ${quoteCharacter}${name}`) : name,
+    filterText: name,
+    kind: vscode.CompletionItemKind.Reference,
+    scopeHint: scopeName
+  };
+}
+
+function createRefTargetCompletionOption(target: RefTarget, quoteCharacter: string): CompletionOption {
+  return createScopedTargetCompletionOption(target.name, target.packageName, quoteCharacter, "dbt ref", "dbt ref from");
+}
+
+function createSourceTargetCompletionOption(target: SourceTarget, quoteCharacter: string): CompletionOption {
+  return createScopedTargetCompletionOption(
+    target.name,
+    target.sourceName,
+    quoteCharacter,
+    "dbt source table",
+    "dbt source table from"
+  );
+}
+
+function createScopedNameCompletionOption(
+  name: string,
+  scopeName: string,
+  detailPrefix: string,
+  quoteCharacter: string
+): CompletionOption {
+  return {
+    label: name,
+    detail: `${detailPrefix} ${scopeName}`,
+    insertText: name,
+    kind: vscode.CompletionItemKind.Value,
+    scopeHint: scopeName
+  };
 }
 
 function getActiveQuoteCharacter(prefix: string): string {
@@ -66,13 +122,70 @@ function isSourceTableContext(prefix: string): boolean {
 }
 
 function isCompletionContext(prefix: string): boolean {
-  return (
-    isRefContext(prefix) ||
-    isRefSecondArgumentContext(prefix) ||
-    isSourceNameContext(prefix) ||
-    isSourceTableContext(prefix)
-  );
+  return COMPLETION_CONTEXT_RESOLVERS.some((resolver) => resolver.matches(prefix));
 }
+
+function shouldTriggerSuggestForChange(change: vscode.TextDocumentContentChangeEvent, document: vscode.TextDocument): boolean {
+  const prefix = document.lineAt(change.range.start.line).text.slice(0, change.range.start.character + change.text.length);
+  if (isCompletionContext(prefix)) {
+    return true;
+  }
+
+  if (change.rangeLength > 0) {
+    const replacementPrefix = document.lineAt(change.range.start.line).text.slice(0, change.range.start.character);
+    return isCompletionContext(replacementPrefix);
+  }
+
+  return false;
+}
+
+const COMPLETION_CONTEXT_RESOLVERS: CompletionContextResolver[] = [
+  {
+    matches: isRefContext,
+    resolveItems(_prefix, quoteCharacter, store) {
+      return [
+        ...store.refPackages.map((packageName) =>
+          createPackageCompletionOption(packageName, quoteCharacter, "dbt ref package")
+        ),
+        ...store.refTargets.map((target) => createRefTargetCompletionOption(target, quoteCharacter))
+      ];
+    }
+  },
+  {
+    matches: isRefSecondArgumentContext,
+    resolveItems(prefix, quoteCharacter, store) {
+      const packageName = getRefPackageFromCallPrefix(prefix);
+      if (!packageName) {
+        return [];
+      }
+
+      return store
+        .getRefsForPackage(packageName)
+        .map((refName) => createScopedNameCompletionOption(refName, packageName, "dbt ref from", quoteCharacter));
+    }
+  },
+  {
+    matches: isSourceNameContext,
+    resolveItems(_prefix, quoteCharacter, store) {
+      return store.sourceTargets.map((target) => createSourceTargetCompletionOption(target, quoteCharacter));
+    }
+  },
+  {
+    matches: isSourceTableContext,
+    resolveItems(prefix, quoteCharacter, store) {
+      const sourceName = getSourceNameFromCallPrefix(prefix);
+      if (!sourceName) {
+        return [];
+      }
+
+      return store
+        .getTablesForSource(sourceName)
+        .map((tableName) =>
+          createScopedNameCompletionOption(tableName, sourceName, "dbt source table from", quoteCharacter)
+        );
+    }
+  }
+];
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const store = new ManifestStore(context);
@@ -110,41 +223,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       provideCompletionItems(document, position) {
         const prefix = document.lineAt(position.line).text.slice(0, position.character);
         const quoteCharacter = getActiveQuoteCharacter(prefix);
-
-        if (isRefContext(prefix)) {
-          return [
-            ...store.refPackages.map((packageName) => createRefPackageCompletionItem(packageName, quoteCharacter)),
-            ...store.refTargets.map((target) => createRefTargetCompletionItem(target, quoteCharacter))
-          ];
+        const resolver = COMPLETION_CONTEXT_RESOLVERS.find((candidate) => candidate.matches(prefix));
+        if (!resolver) {
+          return [];
         }
 
-        if (isRefSecondArgumentContext(prefix)) {
-          const packageName = getRefPackageFromCallPrefix(prefix);
-          if (!packageName) {
-            return [];
-          }
-
-          return store
-            .getRefsForPackage(packageName)
-            .map((refName) => createCompletionItem(refName, `dbt ref from ${packageName}`, quoteCharacter));
-        }
-
-        if (isSourceNameContext(prefix)) {
-          return store.sourceNames.map((sourceName) => createCompletionItem(sourceName, "dbt source", quoteCharacter));
-        }
-
-        if (isSourceTableContext(prefix)) {
-          const sourceName = getSourceNameFromCallPrefix(prefix);
-          if (!sourceName) {
-            return [];
-          }
-
-          return store
-            .getTablesForSource(sourceName)
-            .map((tableName) => createCompletionItem(tableName, `dbt source table from ${sourceName}`, quoteCharacter));
-        }
-
-        return [];
+        return resolver.resolveItems(prefix, quoteCharacter, store).map((option) => createCompletionItem(option, quoteCharacter));
       }
     },
     "'",
@@ -157,16 +241,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
 
-    const deletedInsideCompletionContext = event.contentChanges.some((change) => {
-      if (change.text !== "" || change.rangeLength === 0) {
+    const changedInsideCompletionContext = event.contentChanges.some((change) => {
+      if (change.text.includes("\n") || change.range.start.line !== change.range.end.line) {
         return false;
       }
 
-      const linePrefix = event.document.lineAt(change.range.start.line).text.slice(0, change.range.start.character);
-      return isCompletionContext(linePrefix);
+      return shouldTriggerSuggestForChange(change, event.document);
     });
 
-    if (!deletedInsideCompletionContext) {
+    if (!changedInsideCompletionContext) {
       return;
     }
 
