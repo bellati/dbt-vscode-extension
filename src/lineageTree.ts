@@ -1,6 +1,6 @@
-import * as path from "node:path";
 import * as vscode from "vscode";
 import { ManifestStore, type LineageDirection, type LineageNode } from "./manifestStore";
+import { createResourceTooltip } from "./tooltip";
 
 type TreeItemKind = "root" | "branch" | "node" | "placeholder" | "message";
 
@@ -67,14 +67,6 @@ function clampSetting(value: number | undefined, fallback: number): number {
   return Math.max(0, Math.floor(value));
 }
 
-function describeNodeKind(node: LineageNode): string {
-  if (node.resourceType === "source") {
-    return "dbt source";
-  }
-
-  return `dbt ${node.resourceType}`;
-}
-
 function createPathKey(ancestors: Iterable<string>): Set<string> {
   return new Set(ancestors);
 }
@@ -115,10 +107,6 @@ function createDescription(
   }
 
   return getDirectionGlyph(direction);
-}
-
-function getHoverIdentifier(node: LineageNode): string {
-  return node.packageName ? `${node.packageName}.${node.displayName}` : node.displayName;
 }
 
 export class LineageTreeProvider implements vscode.TreeDataProvider<TreeItemElement> {
@@ -283,24 +271,14 @@ export class LineageTreeProvider implements vscode.TreeDataProvider<TreeItemElem
   }
 
   private createTooltip(node: LineageNode, directionLabel: string): vscode.MarkdownString {
-    const tooltip = new vscode.MarkdownString(undefined, true);
-    tooltip.appendMarkdown(`**${node.displayName}**\n\n`);
-    tooltip.appendMarkdown(`- Name: \`${getHoverIdentifier(node)}\`\n`);
-    tooltip.appendMarkdown(`- Kind: ${describeNodeKind(node)}\n`);
-    if (node.sourceName) {
-      tooltip.appendMarkdown(`- Source: ${node.sourceName}\n`);
-    }
-    if (node.packageName) {
-      tooltip.appendMarkdown(`- Package: ${node.packageName}\n`);
-    }
-    tooltip.appendMarkdown(`- Unique ID: \`${node.uniqueId}\`\n`);
-    tooltip.appendMarkdown(`- Direction: ${directionLabel}\n`);
-    tooltip.appendMarkdown(`- Location: ${node.isLocal ? "Local" : "External"}\n`);
-    if (node.filePath) {
-      tooltip.appendMarkdown(`- File: \`${path.basename(node.filePath)}\`\n`);
+    const target = this.store.getHoverTargetForUniqueId(node.uniqueId);
+    if (!target) {
+      const fallback = new vscode.MarkdownString(undefined, true);
+      fallback.appendMarkdown(`**${node.displayName}**`);
+      return fallback;
     }
 
-    return tooltip;
+    return createResourceTooltip(target, { directionLabel });
   }
 
   private getSettings(): LineageSettings {

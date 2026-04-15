@@ -7,6 +7,7 @@ VS Code extension that:
 - watches `manifest.json` and `manifests.json` changes
 - provides autocomplete for `ref()` and `source()`
 - provides go-to definition for local `ref()` targets and local macros from the dbt manifest
+- provides manifest-backed hover details for `ref()`, `source()`, and lineage tree nodes
 - provides a lineage tree view for the active dbt model
 - opens the compiled SQL for the active dbt model on demand
 - can force a recompilation of the active model before opening the compiled SQL
@@ -139,6 +140,18 @@ Go-to definition is also manifest-backed:
 - placing the cursor on a macro call like `my_macro(...)` or `package_name.my_macro(...)` opens the local macro file when it exists in the workspace
 - if multiple local matches exist, VS Code shows the normal multi-definition picker
 
+Hover details are also manifest-backed:
+
+- tooltips appear when hovering the string argument for `ref('model_name')`
+- tooltips appear when hovering either string argument for `ref('package_name', 'model_name')`
+- tooltips appear when hovering either string argument for `source('source_name', 'table_name')`
+- tooltips appear when hovering a macro call identifier such as `my_macro(...)` or `package_name.my_macro(...)`
+- tooltips appear when hovering any node in the lineage tree, including the root model, upstream nodes, downstream nodes, and source leaf nodes
+- hovering a resolved `ref()` target shows package, resource type, file, fully qualified name, immediate parents, immediate children, and directly referenced macros
+- hovering a resolved `source()` target shows the same metadata for the selected source table
+- hovering a resolved macro call shows package, file, fully qualified name, and unique ID for the macro
+- hovering a lineage tree node shows the same metadata used by editor hovers, plus the lineage direction shown in the tree
+
 For the compiled-model command:
 
 - the active editor must be a local dbt model represented in the manifest
@@ -257,6 +270,25 @@ Expected result:
 - clicking a local model, seed, or snapshot node opens the corresponding file
 - clicking a local source node opens its YAML file when the manifest points to one in the workspace
 - gray nodes stay visible but do not open a file
+- hovering any lineage node shows package, kind, file, FQN, immediate parents, immediate children, and macros
+
+### 9. Verify hover details
+
+Open a SQL or Jinja SQL file and hover:
+
+- the model argument inside `ref('some_model')`
+- either argument inside `ref('some_package', 'some_model')`
+- either argument inside `source('some_source', 'some_table')`
+- a macro call such as `my_macro(...)`
+- a package-qualified macro call such as `dbt_utils.star(...)`
+
+Expected result:
+
+- the hover is resolved from the manifest
+- the tooltip appears only when hovering supported `ref()` and `source()` string arguments, macro call identifiers, or lineage tree nodes
+- the hover shows package, resource type, file, and fully qualified name when available
+- the hover lists immediate parents, immediate children, and direct macro dependencies
+- if an unscoped `ref()` name exists in multiple packages, the hover shows one section per matching target
 
 If you open a file that is not a dbt model represented in the manifest, the lineage view should show an empty-state message instead of stale lineage.
 

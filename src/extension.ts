@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { CompiledModelService } from "./compiledModelService";
 import { LineageTreeProvider } from "./lineageTree";
-import { ManifestStore, type RefTarget, type SourceTarget } from "./manifestStore";
+import { ManifestStore, type HoverTarget, type MacroHoverTarget, type RefTarget, type SourceTarget } from "./manifestStore";
+import { createMacroTooltip, createResourceTooltip } from "./tooltip";
 
 type CompletionInsertText = string | vscode.SnippetString;
 
@@ -166,6 +167,103 @@ function containsPosition(range: vscode.Range, position: vscode.Position): boole
 
 function createDefinitionLocations(filePaths: string[]): vscode.Location[] {
   return filePaths.map((filePath) => new vscode.Location(vscode.Uri.file(filePath), new vscode.Position(0, 0)));
+}
+
+function createHoverForTargets(kind: "ref" | "source", targets: HoverTarget[]): vscode.Hover | undefined {
+  if (targets.length === 0) {
+    return undefined;
+  }
+
+  const markdownBlocks = targets.map((target, index) =>
+    createResourceTooltip(target, {
+      title: targets.length > 1 ? `${kind} target ${index + 1}` : target.node.displayName
+    }).value
+  );
+
+  return new vscode.Hover(markdownBlocks.map((value) => new vscode.MarkdownString(value, true)));
+}
+
+function createMacroHover(targets: MacroHoverTarget[]): vscode.Hover | undefined {
+  if (targets.length === 0) {
+    return undefined;
+  }
+
+  const markdownBlocks = targets.map((target, index) =>
+    createMacroTooltip(target, {
+      title: targets.length > 1 ? `macro target ${index + 1}` : target.macro.name
+    }).value
+  );
+
+  return new vscode.Hover(markdownBlocks.map((value) => new vscode.MarkdownString(value, true)));
+}
+
+function getRefHoverAtPosition(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  store: ManifestStore
+): vscode.Hover | undefined {
+  const lineText = document.lineAt(position.line).text;
+  const refCalls = getCallArguments(lineText, position.line, "ref");
+
+  for (const args of refCalls) {
+    if (args.length === 1 && containsPosition(args[0].range, position)) {
+      return createHoverForTargets("ref", store.getHoverTargetsForRef(args[0].value));
+    }
+
+    if (args.length >= 2 && (containsPosition(args[0].range, position) || containsPosition(args[1].range, position))) {
+      return createHoverForTargets("ref", store.getHoverTargetsForRef(args[1].value, args[0].value));
+    }
+  }
+
+  return undefined;
+}
+
+function getSourceHoverAtPosition(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  store: ManifestStore
+): vscode.Hover | undefined {
+  const lineText = document.lineAt(position.line).text;
+  const sourceCalls = getCallArguments(lineText, position.line, "source");
+
+  for (const args of sourceCalls) {
+    if (
+      args.length >= 2 &&
+      (containsPosition(args[0].range, position) || containsPosition(args[1].range, position))
+    ) {
+      return createHoverForTargets("source", store.getHoverTargetsForSource(args[0].value, args[1].value));
+    }
+  }
+
+  return undefined;
+}
+
+function getMacroHoverAtPosition(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  store: ManifestStore
+): vscode.Hover | undefined {
+  const lineText = document.lineAt(position.line).text;
+  const macroCallPattern = /([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)\s*\(/g;
+  let macroCallMatch = macroCallPattern.exec(lineText);
+
+  while (macroCallMatch) {
+    const identifier = macroCallMatch[1];
+    const startCharacter = macroCallMatch.index;
+    const endCharacter = startCharacter + identifier.length;
+    const range = new vscode.Range(position.line, startCharacter, position.line, endCharacter);
+
+    if (containsPosition(range, position)) {
+      const [packageName, name] = identifier.includes(".")
+        ? (identifier.split(".", 2) as [string, string])
+        : [undefined, identifier];
+      return createMacroHover(store.getHoverTargetsForMacro(name, packageName));
+    }
+
+    macroCallMatch = macroCallPattern.exec(lineText);
+  }
+
+  return undefined;
 }
 
 function getRefDefinitionsAtPosition(
@@ -359,6 +457,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   );
 
+  const hoverProvider = vscode.languages.registerHoverProvider(
+    [
+      { language: "sql", scheme: "file" },
+      { language: "jinja-sql", scheme: "file" }
+    ],
+    {
+      provideHover(document, position) {
+        const refHover = getRefHoverAtPosition(document, position, store);
+        if (refHover) {
+          return refHover;
+        }
+
+        const sourceHover = getSourceHoverAtPosition(document, position, store);
+        if (sourceHover) {
+          return sourceHover;
+        }
+
+        return getMacroHoverAtPosition(document, position, store);
+      }
+    }
+  );
+
   const triggerSuggestOnDelete = vscode.workspace.onDidChangeTextDocument((event) => {
     const activeEditor = vscode.window.activeTextEditor;
     if (!activeEditor || activeEditor.document.uri.toString() !== event.document.uri.toString()) {
@@ -400,6 +520,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     recompileAndShowModelCommand,
     provider,
     definitionProvider,
+    hoverProvider,
     triggerSuggestOnDelete,
     activeEditorListener,
     manifestListener,

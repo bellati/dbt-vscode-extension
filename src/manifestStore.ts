@@ -9,6 +9,11 @@ type DbtManifestNode = {
   resource_type?: string;
   original_file_path?: string;
   path?: string;
+  fqn?: string[];
+  depends_on?: {
+    nodes?: string[];
+    macros?: string[];
+  };
 };
 
 type DbtManifestSource = {
@@ -17,6 +22,11 @@ type DbtManifestSource = {
   package_name?: string;
   original_file_path?: string;
   path?: string;
+  fqn?: string[];
+  depends_on?: {
+    nodes?: string[];
+    macros?: string[];
+  };
 };
 
 type DbtManifestMacro = {
@@ -24,6 +34,7 @@ type DbtManifestMacro = {
   package_name?: string;
   original_file_path?: string;
   path?: string;
+  fqn?: string[];
 };
 
 type DbtManifest = {
@@ -55,7 +66,30 @@ export type LineageNode = {
   sourceName?: string;
   filePath?: string;
   originalFilePath?: string;
+  fullyQualifiedName?: string;
+  macroUniqueIds: string[];
   isLocal: boolean;
+};
+
+export type MacroNode = {
+  uniqueId: string;
+  name: string;
+  packageName?: string;
+  filePath?: string;
+  originalFilePath?: string;
+  fullyQualifiedName?: string;
+  isLocal: boolean;
+};
+
+export type HoverTarget = {
+  node: LineageNode;
+  parents: LineageNode[];
+  children: LineageNode[];
+  macros: MacroNode[];
+};
+
+export type MacroHoverTarget = {
+  macro: MacroNode;
 };
 
 type CompletionState = {
@@ -81,6 +115,15 @@ type DefinitionState = {
   macrosByPackageAndName: Map<string, string[]>;
 };
 
+type HoverState = {
+  refUniqueIdsByName: Map<string, string[]>;
+  refUniqueIdsByPackageAndName: Map<string, string[]>;
+  sourceUniqueIdsBySourceAndName: Map<string, string[]>;
+  macroUniqueIdsByName: Map<string, string[]>;
+  macroUniqueIdsByPackageAndName: Map<string, string[]>;
+  macrosByUniqueId: Map<string, MacroNode>;
+};
+
 const MANIFEST_VARIANTS = ["target/manifest.json", "target/manifests.json"];
 
 function createScopedDefinitionKey(name: string, packageName?: string): string {
@@ -91,6 +134,12 @@ function addDefinitionPath(index: Map<string, string[]>, key: string, filePath: 
   const existingPaths = index.get(key) ?? [];
   existingPaths.push(filePath);
   index.set(key, dedupeAndSort(existingPaths));
+}
+
+function addUniqueId(index: Map<string, string[]>, key: string, uniqueId: string): void {
+  const existingUniqueIds = index.get(key) ?? [];
+  existingUniqueIds.push(uniqueId);
+  index.set(key, dedupeAndSort(existingUniqueIds));
 }
 
 function execFileAsync(command: string, args: string[], cwd: string): Promise<void> {
@@ -140,6 +189,14 @@ export class ManifestStore implements vscode.Disposable {
     refsByPackageAndName: new Map(),
     macrosByName: new Map(),
     macrosByPackageAndName: new Map()
+  };
+  private hoverState: HoverState = {
+    refUniqueIdsByName: new Map(),
+    refUniqueIdsByPackageAndName: new Map(),
+    sourceUniqueIdsBySourceAndName: new Map(),
+    macroUniqueIdsByName: new Map(),
+    macroUniqueIdsByPackageAndName: new Map(),
+    macrosByUniqueId: new Map()
   };
   private lineageState: LineageState = {
     nodesByUniqueId: new Map(),
@@ -215,6 +272,34 @@ export class ManifestStore implements vscode.Disposable {
 
   public getLineageChildren(uniqueId: string): string[] {
     return this.lineageState.childMap.get(uniqueId) ?? [];
+  }
+
+  public getHoverTargetsForRef(name: string, packageName?: string): HoverTarget[] {
+    const uniqueIds = packageName
+      ? this.hoverState.refUniqueIdsByPackageAndName.get(createScopedDefinitionKey(name, packageName)) ?? []
+      : this.hoverState.refUniqueIdsByName.get(name) ?? [];
+
+    return uniqueIds.map((uniqueId) => this.createHoverTarget(uniqueId)).filter((target): target is HoverTarget => Boolean(target));
+  }
+
+  public getHoverTargetsForSource(sourceName: string, name: string): HoverTarget[] {
+    const uniqueIds = this.hoverState.sourceUniqueIdsBySourceAndName.get(createScopedDefinitionKey(name, sourceName)) ?? [];
+    return uniqueIds.map((uniqueId) => this.createHoverTarget(uniqueId)).filter((target): target is HoverTarget => Boolean(target));
+  }
+
+  public getHoverTargetsForMacro(name: string, packageName?: string): MacroHoverTarget[] {
+    const uniqueIds = packageName
+      ? this.hoverState.macroUniqueIdsByPackageAndName.get(createScopedDefinitionKey(name, packageName)) ?? []
+      : this.hoverState.macroUniqueIdsByName.get(name) ?? [];
+
+    return uniqueIds
+      .map((uniqueId) => this.hoverState.macrosByUniqueId.get(uniqueId))
+      .filter((macro): macro is MacroNode => Boolean(macro))
+      .map((macro) => ({ macro }));
+  }
+
+  public getHoverTargetForUniqueId(uniqueId: string): HoverTarget | undefined {
+    return this.createHoverTarget(uniqueId);
   }
 
   public getUniqueIdForFile(filePath: string): string | undefined {
@@ -425,6 +510,7 @@ export class ManifestStore implements vscode.Disposable {
       };
       this.definitionState = await this.buildDefinitionState(parsed, workspaceRoot);
       this.lineageState = await this.buildLineageState(parsed, workspaceRoot);
+      this.hoverState = await this.buildHoverState(parsed, workspaceRoot);
       this.setStatus(`dbt: ${refs.length} refs, ${parsed.sources ? Object.keys(parsed.sources).length : 0} sources`);
       this.onDidChangeEmitter.fire();
     } catch (error) {
@@ -504,6 +590,8 @@ export class ManifestStore implements vscode.Disposable {
         resourceType,
         filePath: resolvedFilePath,
         originalFilePath: node.original_file_path ?? node.path,
+        fullyQualifiedName: node.fqn?.join("."),
+        macroUniqueIds: dedupeAndSort(node.depends_on?.macros ?? []),
         isLocal: Boolean(resolvedFilePath)
       };
       nodesByUniqueId.set(uniqueId, lineageNode);
@@ -525,6 +613,9 @@ export class ManifestStore implements vscode.Disposable {
         resourceType: "source",
         sourceName: source.source_name,
         filePath: resolvedFilePath,
+        originalFilePath: source.original_file_path ?? source.path,
+        fullyQualifiedName: source.fqn?.join("."),
+        macroUniqueIds: dedupeAndSort(source.depends_on?.macros ?? []),
         isLocal: Boolean(resolvedFilePath)
       };
       nodesByUniqueId.set(uniqueId, lineageNode);
@@ -538,6 +629,60 @@ export class ManifestStore implements vscode.Disposable {
       fileToUniqueId,
       parentMap: mapToSortedArrays(parsed.parent_map ?? {}),
       childMap: mapToSortedArrays(parsed.child_map ?? {})
+    };
+  }
+
+  private async buildHoverState(parsed: DbtManifest, workspaceRoot?: string): Promise<HoverState> {
+    const refUniqueIdsByName = new Map<string, string[]>();
+    const refUniqueIdsByPackageAndName = new Map<string, string[]>();
+    const sourceUniqueIdsBySourceAndName = new Map<string, string[]>();
+    const macroUniqueIdsByName = new Map<string, string[]>();
+    const macroUniqueIdsByPackageAndName = new Map<string, string[]>();
+    const macrosByUniqueId = new Map<string, MacroNode>();
+
+    for (const [uniqueId, node] of Object.entries(parsed.nodes ?? {})) {
+      if (!this.isRefableNode(node)) {
+        continue;
+      }
+
+      addUniqueId(refUniqueIdsByName, node.name, uniqueId);
+      addUniqueId(refUniqueIdsByPackageAndName, createScopedDefinitionKey(node.name, node.package_name), uniqueId);
+    }
+
+    for (const [uniqueId, source] of Object.entries(parsed.sources ?? {})) {
+      if (!source.source_name || !source.name) {
+        continue;
+      }
+
+      addUniqueId(sourceUniqueIdsBySourceAndName, createScopedDefinitionKey(source.name, source.source_name), uniqueId);
+    }
+
+    for (const [uniqueId, macro] of Object.entries(parsed.macros ?? {})) {
+      if (!macro.name) {
+        continue;
+      }
+
+      addUniqueId(macroUniqueIdsByName, macro.name, uniqueId);
+      addUniqueId(macroUniqueIdsByPackageAndName, createScopedDefinitionKey(macro.name, macro.package_name), uniqueId);
+      const resolvedFilePath = await this.resolveLocalPath(workspaceRoot, macro.original_file_path ?? macro.path);
+      macrosByUniqueId.set(uniqueId, {
+        uniqueId,
+        name: macro.name,
+        packageName: macro.package_name,
+        filePath: resolvedFilePath,
+        originalFilePath: macro.original_file_path ?? macro.path,
+        fullyQualifiedName: macro.fqn?.join("."),
+        isLocal: Boolean(resolvedFilePath)
+      });
+    }
+
+    return {
+      refUniqueIdsByName,
+      refUniqueIdsByPackageAndName,
+      sourceUniqueIdsBySourceAndName,
+      macroUniqueIdsByName,
+      macroUniqueIdsByPackageAndName,
+      macrosByUniqueId
     };
   }
 
@@ -576,6 +721,14 @@ export class ManifestStore implements vscode.Disposable {
       refsByPackageAndName: new Map(),
       macrosByName: new Map(),
       macrosByPackageAndName: new Map()
+    };
+    this.hoverState = {
+      refUniqueIdsByName: new Map(),
+      refUniqueIdsByPackageAndName: new Map(),
+      sourceUniqueIdsBySourceAndName: new Map(),
+      macroUniqueIdsByName: new Map(),
+      macroUniqueIdsByPackageAndName: new Map(),
+      macrosByUniqueId: new Map()
     };
     this.lineageState = {
       nodesByUniqueId: new Map(),
@@ -616,5 +769,29 @@ export class ManifestStore implements vscode.Disposable {
     }
 
     return node.resource_type === "model" || node.resource_type === "seed" || node.resource_type === "snapshot";
+  }
+
+  private createHoverTarget(uniqueId: string): HoverTarget | undefined {
+    const node = this.getLineageNode(uniqueId);
+    if (!node) {
+      return undefined;
+    }
+
+    const parents = this.getLineageParents(uniqueId)
+      .map((parentUniqueId) => this.getLineageNode(parentUniqueId))
+      .filter((parent): parent is LineageNode => Boolean(parent));
+    const children = this.getLineageChildren(uniqueId)
+      .map((childUniqueId) => this.getLineageNode(childUniqueId))
+      .filter((child): child is LineageNode => Boolean(child));
+    const macros = node.macroUniqueIds
+      .map((macroUniqueId) => this.hoverState.macrosByUniqueId.get(macroUniqueId))
+      .filter((macro): macro is MacroNode => Boolean(macro));
+
+    return {
+      node,
+      parents,
+      children,
+      macros
+    };
   }
 }
