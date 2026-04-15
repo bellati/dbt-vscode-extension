@@ -13,15 +13,45 @@ VS Code extension that:
 - opens the compiled SQL for the active dbt model on demand
 - can force a recompilation of the active model before opening the compiled SQL
 
-`source()` completion is two-level:
+`source()` completion is manifest-backed:
 
-- first argument: source name
-- second argument: table name
+- typing the first argument suggests source table entries and can insert the full `source('source_name', 'table_name')` form
+- typing the second argument after `source('source_name', '` suggests only tables for that source
 
 `ref()` completion supports both dbt styles:
 
 - single argument: `ref('model_name')`
 - two arguments: `ref('package_name', 'model_name')`
+
+## Get Started
+
+If you want to use `Light dbt` in VS Code:
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Build the extension:
+
+```bash
+npm run build
+```
+
+3. Generate the installable `.vsix` package:
+
+```bash
+npm run package:vsix
+```
+
+4. In VS Code, open the Extensions view.
+5. Open the Extensions `...` menu and choose `Install from VSIX...`.
+6. Select the generated `light-dbt-<version>.vsix` file from the repository root.
+7. Reload VS Code if prompted.
+8. Open your dbt project as the workspace root.
+9. Make sure `dbt --version` works in your shell.
+10. Open a SQL model and use `ref(` or `source(` to trigger completions.
 
 Main commands exposed in VS Code:
 
@@ -43,8 +73,9 @@ What to expect:
 - `Upstream` shows dependencies
 - `Downstream` shows dependents
 - sources can appear only as upstream leaf nodes
-- local nodes use a green icon and can be opened
-- external or unresolved nodes use a gray icon and are shown for visibility, but they do not open files
+- local model, seed, and snapshot nodes use filled glyphs and can be opened
+- external or unresolved nodes stay visible with hollow glyphs, but they do not open files
+- source nodes use a distinct source glyph and open only when the manifest points to a local file
 - if the lineage is truncated by the node limit, the branch ends with `… more nodes not shown`
 
 The view is backed by dbt's manifest graph, but rendered as a normal VS Code tree. Shared dependencies can therefore appear more than once in different branches.
@@ -54,32 +85,6 @@ The view is backed by dbt's manifest graph, but rendered as a normal VS Code tre
 - `dbt` must be installed and available on your `PATH`
 - a dbt project must be opened as the VS Code workspace root
 - Node.js 25+ and npm are required for local development
-
-## Installation
-
-### For normal users
-
-This extension is not published to the VS Code Marketplace yet. The intended installation method is a packaged `.vsix` file.
-
-Once you have a `.vsix` file:
-
-1. Open VS Code.
-2. Open the Extensions view.
-3. Click the `...` menu in the top-right of the Extensions panel.
-4. Choose `Install from VSIX...`.
-5. Select the `.vsix` file for `Light dbt`.
-6. Reload VS Code if prompted.
-
-After installation:
-
-1. Open your dbt project as the workspace root.
-2. Make sure `dbt --version` works in your shell.
-3. Open a SQL model and use `ref(` or `source(` to trigger completions.
-4. Open the `Light dbt` activity bar container to inspect lineage for the active model.
-
-### If you only have the source repository
-
-End users should not install directly from the source tree. Ask the maintainer for a packaged `.vsix` file, or for a Marketplace publication once the extension is released there.
 
 ## Local Development
 
@@ -102,7 +107,7 @@ npm run watch
 ```
 
 4. Open this repository in VS Code.
-5. Press `F5` and choose `Run Light dbt`.
+5. Press `F5` and choose `Run dbt Auto Complete`.
 6. A new Extension Development Host window will open with the extension loaded.
 
 ## How To Test
@@ -135,7 +140,14 @@ You can also run the command palette action:
 - `Light dbt: Recompile and Show Model`
 - `Light dbt: Picker`
 
-These commands force the extension to check `dbt` again, reload the manifest, and reveal the lineage tree for the active model.
+What each command does:
+
+- `Light dbt: Refresh Manifest` checks `dbt`, regenerates or reloads the manifest, and refreshes manifest-backed features
+- `Light dbt: Refresh Lineage` refreshes the manifest and then rebuilds lineage for the active editor
+- `Light dbt: Show Lineage` reveals lineage for the active editor without forcing a manifest refresh first
+- `Light dbt: Show Compiled Model` opens compiled SQL for the active model, compiling first only if needed
+- `Light dbt: Recompile and Show Model` always recompiles the active model before opening compiled SQL
+- `Light dbt: Picker` opens the manifest-backed quick-pick search and does not refresh lineage by itself
 
 The picker command is also manifest-backed:
 
@@ -224,7 +236,7 @@ select * from {{ source('
 
 Expected result:
 
-- VS Code suggests available source table names
+- VS Code suggests source table entries from the manifest
 - inserted completions preserve whether you typed `'` or `"`
 - selecting a table inserts the full form, for example `source('jaffle_shop', 'customers')`
 - if you backspace while editing the current source text, suggestions should reopen automatically
@@ -281,7 +293,7 @@ Expected result:
 - items show package and path context in the detail field when available
 - selecting an item opens the matching local file
 
-### 8. Verify the lineage tree
+### 9. Verify the lineage tree
 
 Open a dbt model file that exists in the manifest.
 
@@ -292,10 +304,10 @@ Expected result:
 - expanding a local model node opens further lineage within the configured limits
 - clicking a local model, seed, or snapshot node opens the corresponding file
 - clicking a local source node opens its YAML file when the manifest points to one in the workspace
-- gray nodes stay visible but do not open a file
+- unresolved or external nodes stay visible but do not open a file
 - hovering any lineage node shows package, kind, file, FQN, immediate parents, immediate children, and macros
 
-### 9. Verify hover details
+### 10. Verify hover details
 
 Open a SQL or Jinja SQL file and hover:
 
@@ -315,7 +327,7 @@ Expected result:
 
 If you open a file that is not a dbt model represented in the manifest, the lineage view should show an empty-state message instead of stale lineage.
 
-### 9. Verify lineage limits
+### 11. Verify lineage limits
 
 Add settings like:
 
@@ -330,7 +342,7 @@ Expected result:
 - when a limit is hit, the branch shows `… more nodes not shown`
 - changing these settings rebuilds the tree without restarting VS Code
 
-### 10. Verify compiled model output
+### 12. Verify compiled model output
 
 Open a dbt model file that exists in the manifest, then run:
 
@@ -351,6 +363,7 @@ Expected result:
 - `Light dbt: Show Lineage`: reveal lineage for the current active dbt model
 - `Light dbt: Show Compiled Model`: open the compiled SQL for the active model, compiling only if the compiled artifact is missing
 - `Light dbt: Recompile and Show Model`: force `dbt compile` for the active model and then open the compiled SQL from `target/compiled/...`
+- `Light dbt: Picker`: search local manifest-backed models, sources, seeds, snapshots, and macros, then open the selected file
 
 ## Development Scripts
 
