@@ -20,6 +20,14 @@ VS Code extension that:
 - single argument: `ref('model_name')`
 - two arguments: `ref('package_name', 'model_name')`
 
+Main commands exposed in VS Code:
+
+- `dbt Auto Complete: Refresh Manifest`: regenerate or reload the dbt manifest artifact so completions, model lookup, and lineage stay in sync with the project.
+- `dbt Auto Complete: Refresh Lineage`: refresh the manifest-backed data and immediately rebuild the lineage tree for the active editor.
+- `dbt Auto Complete: Show Lineage`: reveal the lineage view for the current active dbt model without forcing a manifest refresh first.
+- `dbt Auto Complete: Show Compiled Model`: open the compiled SQL for the active model, compiling first only when the compiled artifact is missing.
+- `dbt Auto Complete: Recompile and Show Model`: always run `dbt compile` for the active model and then open the freshly generated compiled SQL.
+
 ## Lineage View
 
 The extension adds a `Lineage` tree view inside the `dbt Auto Complete` activity bar container in VS Code.
@@ -83,9 +91,15 @@ npm install
 npm run build
 ```
 
-3. Open this repository in VS Code.
-4. Press `F5` and choose `Run dbt Auto Complete`.
-5. A new Extension Development Host window will open with the extension loaded.
+3. Rebuild automatically while editing, if needed:
+
+```bash
+npm run watch
+```
+
+4. Open this repository in VS Code.
+5. Press `F5` and choose `Run dbt Auto Complete`.
+6. A new Extension Development Host window will open with the extension loaded.
 
 ## How To Test
 
@@ -256,10 +270,16 @@ Expected result:
 ## Commands
 
 - `dbt Auto Complete: Refresh Manifest`: regenerate or reload the dbt manifest artifact
-- `dbt Auto Complete: Show Lineage`: reveal lineage for the current active dbt model
 - `dbt Auto Complete: Refresh Lineage`: refresh manifest-backed lineage data and rebuild the tree
+- `dbt Auto Complete: Show Lineage`: reveal lineage for the current active dbt model
 - `dbt Auto Complete: Show Compiled Model`: open the compiled SQL for the active model, compiling only if the compiled artifact is missing
 - `dbt Auto Complete: Recompile and Show Model`: force `dbt compile` for the active model and then open the compiled SQL from `target/compiled/...`
+
+## Development Scripts
+
+- `npm run build`: compile the TypeScript extension into `dist/`
+- `npm run watch`: run the TypeScript compiler in watch mode during local development
+- `npm run package:vsix`: build a `.vsix` package for installation or distribution
 
 ## Configuration
 
