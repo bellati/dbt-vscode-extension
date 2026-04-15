@@ -34,6 +34,10 @@
       {
         "command": "dbtAutoComplete.showCompiledModel",
         "title": "dbt Auto Complete: Show Compiled Model"
+      },
+      {
+        "command": "dbtAutoComplete.recompileAndShowModel",
+        "title": "dbt Auto Complete: Recompile and Show Model"
       }
     ],
     "viewsContainers": {

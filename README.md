@@ -8,6 +8,7 @@ VS Code extension that:
 - provides autocomplete for `ref()` and `source()`
 - provides a lineage tree view for the active dbt model
 - opens the compiled SQL for the active dbt model on demand
+- can force a recompilation of the active model before opening the compiled SQL
 
 `source()` completion is two-level:
 
@@ -113,14 +114,21 @@ You can also run the command palette action:
 - `dbt Auto Complete: Refresh Lineage`
 - `dbt Auto Complete: Show Lineage`
 - `dbt Auto Complete: Show Compiled Model`
+- `dbt Auto Complete: Recompile and Show Model`
 
 These commands force the extension to check `dbt` again, reload the manifest, and reveal the lineage tree for the active model.
 
 For the compiled-model command:
 
 - the active editor must be a local dbt model represented in the manifest
-- the extension runs `dbt compile --select path:<model_path>`
-- the compiled SQL opens from `target/compiled/<package>/...`
+- if the compiled SQL already exists under `target/compiled/<package>/...`, the extension opens it immediately
+- otherwise the extension runs `dbt compile --select path:<model_path>` and then opens the generated compiled SQL
+
+For the recompile command:
+
+- the extension always runs `dbt compile --select path:<model_path>` for the active model
+- after the compile finishes, it opens the compiled SQL from `target/compiled/<package>/...`
+- compile progress is shown both as a VS Code progress notification and a temporary status bar message
 
 ### 3. Verify manifest generation
 
@@ -236,11 +244,13 @@ Expected result:
 Open a dbt model file that exists in the manifest, then run:
 
 - `dbt Auto Complete: Show Compiled Model`
+- `dbt Auto Complete: Recompile and Show Model`
 
 Expected result:
 
-- the extension runs `dbt compile` for the active model
-- VS Code opens the compiled SQL file from `target/compiled/...`
+- `Show Compiled Model` opens the existing compiled SQL immediately when present, otherwise it compiles the active model first
+- `Recompile and Show Model` always recompiles the active model before opening the compiled SQL
+- during compilation, VS Code shows progress in a notification and in the status bar
 - if the active file is not a manifest-backed dbt model, the extension shows a warning instead of opening an unrelated file
 
 ## Commands
@@ -248,7 +258,8 @@ Expected result:
 - `dbt Auto Complete: Refresh Manifest`: regenerate or reload the dbt manifest artifact
 - `dbt Auto Complete: Show Lineage`: reveal lineage for the current active dbt model
 - `dbt Auto Complete: Refresh Lineage`: refresh manifest-backed lineage data and rebuild the tree
-- `dbt Auto Complete: Show Compiled Model`: run `dbt compile` for the active model and open the compiled SQL from `target/compiled/...`
+- `dbt Auto Complete: Show Compiled Model`: open the compiled SQL for the active model, compiling only if the compiled artifact is missing
+- `dbt Auto Complete: Recompile and Show Model`: force `dbt compile` for the active model and then open the compiled SQL from `target/compiled/...`
 
 ## Configuration
 

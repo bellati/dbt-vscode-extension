@@ -213,6 +213,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     await compiledModelService.openCompiledModelForFile(activeEditor.document.uri.fsPath);
   });
+  const recompileAndShowModelCommand = vscode.commands.registerCommand(
+    "dbtAutoComplete.recompileAndShowModel",
+    async () => {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (!activeEditor) {
+        void vscode.window.showWarningMessage("Open a dbt model file to recompile and view its compiled SQL.");
+        return;
+      }
+
+      await compiledModelService.openCompiledModelForFile(activeEditor.document.uri.fsPath, true);
+    }
+  );
 
   const provider = vscode.languages.registerCompletionItemProvider(
     [
@@ -273,6 +285,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshLineageCommand,
     showLineageCommand,
     showCompiledModelCommand,
+    recompileAndShowModelCommand,
     provider,
     triggerSuggestOnDelete,
     activeEditorListener,
