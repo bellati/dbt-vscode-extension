@@ -124,6 +124,99 @@ function isCompletionContext(prefix: string): boolean {
   return COMPLETION_CONTEXT_RESOLVERS.some((resolver) => resolver.matches(prefix));
 }
 
+type CallArgument = {
+  value: string;
+  range: vscode.Range;
+};
+
+function getCallArguments(lineText: string, lineNumber: number, callName: string): CallArgument[][] {
+  const matches: CallArgument[][] = [];
+  const callPattern = new RegExp(`${callName}\\s*\\(([^)]*)\\)`, "g");
+  let callMatch = callPattern.exec(lineText);
+
+  while (callMatch) {
+    const fullMatch = callMatch[0];
+    const rawArguments = callMatch[1];
+    const argumentsStartOffset = callMatch.index + fullMatch.indexOf(rawArguments);
+    const argumentsForCall: CallArgument[] = [];
+    const argumentPattern = /(['"])([^'"]*)\1/g;
+    let argumentMatch = argumentPattern.exec(rawArguments);
+
+    while (argumentMatch) {
+      const value = argumentMatch[2];
+      const startCharacter = argumentsStartOffset + argumentMatch.index + 1;
+      const endCharacter = startCharacter + value.length;
+      argumentsForCall.push({
+        value,
+        range: new vscode.Range(lineNumber, startCharacter, lineNumber, endCharacter)
+      });
+      argumentMatch = argumentPattern.exec(rawArguments);
+    }
+
+    matches.push(argumentsForCall);
+    callMatch = callPattern.exec(lineText);
+  }
+
+  return matches;
+}
+
+function containsPosition(range: vscode.Range, position: vscode.Position): boolean {
+  return range.start.isBeforeOrEqual(position) && range.end.isAfterOrEqual(position);
+}
+
+function createDefinitionLocations(filePaths: string[]): vscode.Location[] {
+  return filePaths.map((filePath) => new vscode.Location(vscode.Uri.file(filePath), new vscode.Position(0, 0)));
+}
+
+function getRefDefinitionsAtPosition(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  store: ManifestStore
+): vscode.Location[] {
+  const lineText = document.lineAt(position.line).text;
+  const refCalls = getCallArguments(lineText, position.line, "ref");
+
+  for (const args of refCalls) {
+    if (args.length === 1 && containsPosition(args[0].range, position)) {
+      return createDefinitionLocations(store.getDefinitionPathsForRef(args[0].value));
+    }
+
+    if (args.length >= 2 && containsPosition(args[1].range, position)) {
+      return createDefinitionLocations(store.getDefinitionPathsForRef(args[1].value, args[0].value));
+    }
+  }
+
+  return [];
+}
+
+function getMacroDefinitionsAtPosition(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  store: ManifestStore
+): vscode.Location[] {
+  const lineText = document.lineAt(position.line).text;
+  const macroCallPattern = /([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)\s*\(/g;
+  let macroCallMatch = macroCallPattern.exec(lineText);
+
+  while (macroCallMatch) {
+    const identifier = macroCallMatch[1];
+    const startCharacter = macroCallMatch.index;
+    const endCharacter = startCharacter + identifier.length;
+    const range = new vscode.Range(position.line, startCharacter, position.line, endCharacter);
+
+    if (containsPosition(range, position)) {
+      const [packageName, name] = identifier.includes(".")
+        ? (identifier.split(".", 2) as [string, string])
+        : [undefined, identifier];
+      return createDefinitionLocations(store.getDefinitionPathsForMacro(name, packageName));
+    }
+
+    macroCallMatch = macroCallPattern.exec(lineText);
+  }
+
+  return [];
+}
+
 function shouldTriggerSuggestForChange(change: vscode.TextDocumentContentChangeEvent, document: vscode.TextDocument): boolean {
   const prefix = document.lineAt(change.range.start.line).text.slice(0, change.range.start.character + change.text.length);
   if (isCompletionContext(prefix)) {
@@ -244,6 +337,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     "\""
   );
 
+  const definitionProvider = vscode.languages.registerDefinitionProvider(
+    [
+      { language: "sql", scheme: "file" },
+      { language: "jinja-sql", scheme: "file" }
+    ],
+    {
+      provideDefinition(document, position) {
+        const refDefinitions = getRefDefinitionsAtPosition(document, position, store);
+        if (refDefinitions.length > 0) {
+          return refDefinitions;
+        }
+
+        const macroDefinitions = getMacroDefinitionsAtPosition(document, position, store);
+        if (macroDefinitions.length > 0) {
+          return macroDefinitions;
+        }
+
+        return undefined;
+      }
+    }
+  );
+
   const triggerSuggestOnDelete = vscode.workspace.onDidChangeTextDocument((event) => {
     const activeEditor = vscode.window.activeTextEditor;
     if (!activeEditor || activeEditor.document.uri.toString() !== event.document.uri.toString()) {
@@ -284,6 +399,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCompiledModelCommand,
     recompileAndShowModelCommand,
     provider,
+    definitionProvider,
     triggerSuggestOnDelete,
     activeEditorListener,
     manifestListener,

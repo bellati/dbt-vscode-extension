@@ -19,9 +19,17 @@ type DbtManifestSource = {
   path?: string;
 };
 
+type DbtManifestMacro = {
+  name?: string;
+  package_name?: string;
+  original_file_path?: string;
+  path?: string;
+};
+
 type DbtManifest = {
   nodes?: Record<string, DbtManifestNode>;
   sources?: Record<string, DbtManifestSource>;
+  macros?: Record<string, DbtManifestMacro>;
   parent_map?: Record<string, string[]>;
   child_map?: Record<string, string[]>;
 };
@@ -66,7 +74,24 @@ type LineageState = {
   childMap: Map<string, string[]>;
 };
 
+type DefinitionState = {
+  refsByName: Map<string, string[]>;
+  refsByPackageAndName: Map<string, string[]>;
+  macrosByName: Map<string, string[]>;
+  macrosByPackageAndName: Map<string, string[]>;
+};
+
 const MANIFEST_VARIANTS = ["target/manifest.json", "target/manifests.json"];
+
+function createScopedDefinitionKey(name: string, packageName?: string): string {
+  return `${packageName ?? ""}:${name}`;
+}
+
+function addDefinitionPath(index: Map<string, string[]>, key: string, filePath: string): void {
+  const existingPaths = index.get(key) ?? [];
+  existingPaths.push(filePath);
+  index.set(key, dedupeAndSort(existingPaths));
+}
 
 function execFileAsync(command: string, args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -109,6 +134,12 @@ export class ManifestStore implements vscode.Disposable {
     refsByPackage: new Map(),
     sourceTargets: [],
     sourcesByName: new Map()
+  };
+  private definitionState: DefinitionState = {
+    refsByName: new Map(),
+    refsByPackageAndName: new Map(),
+    macrosByName: new Map(),
+    macrosByPackageAndName: new Map()
   };
   private lineageState: LineageState = {
     nodesByUniqueId: new Map(),
@@ -156,6 +187,22 @@ export class ManifestStore implements vscode.Disposable {
 
   public getTablesForSource(sourceName: string): string[] {
     return this.completionState.sourcesByName.get(sourceName) ?? [];
+  }
+
+  public getDefinitionPathsForRef(name: string, packageName?: string): string[] {
+    if (packageName) {
+      return this.definitionState.refsByPackageAndName.get(createScopedDefinitionKey(name, packageName)) ?? [];
+    }
+
+    return this.definitionState.refsByName.get(name) ?? [];
+  }
+
+  public getDefinitionPathsForMacro(name: string, packageName?: string): string[] {
+    if (packageName) {
+      return this.definitionState.macrosByPackageAndName.get(createScopedDefinitionKey(name, packageName)) ?? [];
+    }
+
+    return this.definitionState.macrosByName.get(name) ?? [];
   }
 
   public getLineageNode(uniqueId: string): LineageNode | undefined {
@@ -376,6 +423,7 @@ export class ManifestStore implements vscode.Disposable {
         sourceTargets,
         sourcesByName
       };
+      this.definitionState = await this.buildDefinitionState(parsed, workspaceRoot);
       this.lineageState = await this.buildLineageState(parsed, workspaceRoot);
       this.setStatus(`dbt: ${refs.length} refs, ${parsed.sources ? Object.keys(parsed.sources).length : 0} sources`);
       this.onDidChangeEmitter.fire();
@@ -386,6 +434,56 @@ export class ManifestStore implements vscode.Disposable {
         `Light dbt could not parse ${path.basename(manifestPath)}: ${this.formatError(error)}`
       );
     }
+  }
+
+  private async buildDefinitionState(parsed: DbtManifest, workspaceRoot?: string): Promise<DefinitionState> {
+    const refsByName = new Map<string, string[]>();
+    const refsByPackageAndName = new Map<string, string[]>();
+    const macrosByName = new Map<string, string[]>();
+    const macrosByPackageAndName = new Map<string, string[]>();
+
+    for (const node of Object.values(parsed.nodes ?? {})) {
+      if (!this.isRefableNode(node)) {
+        continue;
+      }
+
+      const resolvedFilePath = await this.resolveLocalPath(workspaceRoot, node.original_file_path ?? node.path);
+      if (!resolvedFilePath) {
+        continue;
+      }
+
+      addDefinitionPath(refsByName, node.name, resolvedFilePath);
+      addDefinitionPath(
+        refsByPackageAndName,
+        createScopedDefinitionKey(node.name, node.package_name),
+        resolvedFilePath
+      );
+    }
+
+    for (const macro of Object.values(parsed.macros ?? {})) {
+      if (!macro.name) {
+        continue;
+      }
+
+      const resolvedFilePath = await this.resolveLocalPath(workspaceRoot, macro.original_file_path ?? macro.path);
+      if (!resolvedFilePath) {
+        continue;
+      }
+
+      addDefinitionPath(macrosByName, macro.name, resolvedFilePath);
+      addDefinitionPath(
+        macrosByPackageAndName,
+        createScopedDefinitionKey(macro.name, macro.package_name),
+        resolvedFilePath
+      );
+    }
+
+    return {
+      refsByName,
+      refsByPackageAndName,
+      macrosByName,
+      macrosByPackageAndName
+    };
   }
 
   private async buildLineageState(parsed: DbtManifest, workspaceRoot?: string): Promise<LineageState> {
@@ -472,6 +570,12 @@ export class ManifestStore implements vscode.Disposable {
       refsByPackage: new Map(),
       sourceTargets: [],
       sourcesByName: new Map()
+    };
+    this.definitionState = {
+      refsByName: new Map(),
+      refsByPackageAndName: new Map(),
+      macrosByName: new Map(),
+      macrosByPackageAndName: new Map()
     };
     this.lineageState = {
       nodesByUniqueId: new Map(),

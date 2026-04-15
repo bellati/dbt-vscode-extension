@@ -6,6 +6,7 @@ VS Code extension that:
 - generates a manifest artifact with `dbt parse` when missing
 - watches `manifest.json` and `manifests.json` changes
 - provides autocomplete for `ref()` and `source()`
+- provides go-to definition for local `ref()` targets and local macros from the dbt manifest
 - provides a lineage tree view for the active dbt model
 - opens the compiled SQL for the active dbt model on demand
 - can force a recompilation of the active model before opening the compiled SQL
@@ -132,6 +133,12 @@ You can also run the command palette action:
 
 These commands force the extension to check `dbt` again, reload the manifest, and reveal the lineage tree for the active model.
 
+Go-to definition is also manifest-backed:
+
+- placing the cursor on the model argument in `ref('model_name')` or `ref('package_name', 'model_name')` opens the local model, seed, or snapshot file when it exists in the workspace
+- placing the cursor on a macro call like `my_macro(...)` or `package_name.my_macro(...)` opens the local macro file when it exists in the workspace
+- if multiple local matches exist, VS Code shows the normal multi-definition picker
+
 For the compiled-model command:
 
 - the active editor must be a local dbt model represented in the manifest
@@ -223,7 +230,22 @@ Expected result:
 - completion results update without restarting VS Code
 - the lineage tree updates without restarting VS Code
 
-### 7. Verify the lineage tree
+### 7. Verify go-to definition
+
+Open a SQL or Jinja SQL file and use VS Code's normal `Go to Definition` action on:
+
+- the model argument inside `ref('some_model')`
+- the model argument inside `ref('some_package', 'some_model')`
+- a macro call such as `my_macro(...)`
+- a package-qualified macro call such as `dbt_utils.star(...)`
+
+Expected result:
+
+- local `ref()` targets open the corresponding model, seed, or snapshot file
+- local macros open the corresponding macro file
+- unresolved or external-only targets do not open anything
+
+### 8. Verify the lineage tree
 
 Open a dbt model file that exists in the manifest.
 
@@ -238,7 +260,7 @@ Expected result:
 
 If you open a file that is not a dbt model represented in the manifest, the lineage view should show an empty-state message instead of stale lineage.
 
-### 8. Verify lineage limits
+### 9. Verify lineage limits
 
 Add settings like:
 
@@ -253,7 +275,7 @@ Expected result:
 - when a limit is hit, the branch shows `… more nodes not shown`
 - changing these settings rebuilds the tree without restarting VS Code
 
-### 9. Verify compiled model output
+### 10. Verify compiled model output
 
 Open a dbt model file that exists in the manifest, then run:
 
